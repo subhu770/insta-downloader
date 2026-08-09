@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insta Downloader - Fast & Free Instagram Downloader</title>
+  <meta name="description" content="Download Instagram Reels, Photos, and Stories in high quality. Clean, ultra-fast, and completely ad-free downloader.">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Outfit & Space Grotesk -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            display: ['Space Grotesk', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              dark: '#07080e',
+              card: '#0f111e',
+              pink: '#ff007f',
+              purple: '#7928ca',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'spin-slow': 'spin 3s linear infinite',
+            'fade-in': 'fadeIn 0.3s ease-out forwards',
+            'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'scale(0.95)' },
+              '100%': { opacity: '1', transform: 'scale(1)' },
+            },
+            slideUp: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* Premium custom gradients and blur classes */
+    body {
+      background-color: #07080e;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(121, 40, 202, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(255, 0, 127, 0.12) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+    
+    .glass-card {
+      background: rgba(15, 17, 30, 0.45);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glow-border:focus-within {
+      border-color: rgba(255, 0, 127, 0.5);
+      box-shadow: 0 0 20px rgba(255, 0, 127, 0.15);
+    }
+    
+    /* Custom scrollbar for multi-media carousels */
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col justify-between text-slate-100 font-sans relative antialiased overflow-x-hidden">
+
+  <!-- Floating Background Elements -->
+  <div class="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-purple-900/10 to-transparent pointer-events-none z-0"></div>
+  
+  <div class="absolute top-1/4 left-10 w-72 h-72 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none animate-pulse-slow"></div>
+  <div class="absolute bottom-1/4 right-10 w-80 h-80 bg-pink-600/10 rounded-full blur-[120px] pointer-events-none animate-pulse-slow" style="animation-delay: 1.5s;"></div>
+
+  <!-- Main Container -->
+  <main class="flex-grow flex items-center justify-center p-4 md:p-6 z-10 relative">
+    <div class="w-full max-w-xl glass-card rounded-[2.5rem] p-6 md:p-8 shadow-2xl relative">
+      
+      <!-- Top Glowing Accent -->
+      <div class="absolute -top-px left-10 right-10 h-[2px] bg-gradient-to-r from-transparent via-pink-500 to-transparent opacity-70"></div>
+
+      <!-- Header Section -->
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 mx-auto mb-4 flex items-center justify-center rounded-2xl bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 p-0.5 shadow-lg shadow-pink-500/30 relative group">
+          <div class="absolute inset-0 bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 rounded-2xl blur-xl opacity-45 group-hover:opacity-75 transition-opacity duration-500"></div>
+          <div class="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center relative z-10 transition-colors duration-300 group-hover:bg-transparent">
+            <svg class="w-8 h-8 text-white relative z-20 group-hover:scale-110 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+            </svg>
+          </div>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-extrabold font-display tracking-tight text-white mb-2">
+          Insta <span class="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent">Downloader</span>
+        </h1>
+        <p class="text-slate-400 text-sm md:text-base max-w-sm mx-auto">
+          Ultra-fast, responsive, and completely ad-free downloader.
+        </p>
+      </div>
+
+      <!-- 3 Active Tabs System -->
+      <div class="mb-6 relative">
+        <div class="bg-white/[0.03] border border-white/[0.06] p-1.5 rounded-2xl flex relative w-full overflow-hidden">
+          
+          <!-- Sliding Background Block -->
+          <div id="tab-indicator" class="absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl transition-all duration-300 ease-out z-0 shadow-lg shadow-pink-500/20"></div>
+          
+          <!-- Tabs Buttons -->
+          <button onclick="switchTab('reels')" id="tab-reels" class="flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-1 sm:gap-2 relative z-10 transition-all duration-200 text-white whitespace-nowrap">
+            <i data-lucide="film" class="w-4 h-4"></i>
+            <span>Reels</span>
+          </button>
+          
+          <button onclick="switchTab('photos')" id="tab-photos" class="flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-xl flex items-center justify-center gap-1 sm:gap-2 relative z-10 transition-all duration-200 text-slate-400 hover:text-white whitespace-nowrap">
+            <i data-lucide="image" class="w-4 h-4"></i>
+            <span>Photos</span>
+          </button>
+          
+          <button onclick="switchTab('stories')" id="tab-stories" class="flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-xl flex items-center justify-center gap-1 sm:gap-2 relative z-10 transition-all duration-200 text-slate-400 hover:text-white whitespace-nowrap">
+            <i data-lucide="history" class="w-4 h-4"></i>
+            <span>Stories</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Input Layout & Warnings -->
+      <div class="space-y-4">
+        
+        <!-- Stories Maintenance Banner -->
+        <div id="stories-maintenance-banner" class="hidden animate-fade-in bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 text-center">
+          <div class="inline-flex items-center justify-center p-3 bg-amber-500/10 rounded-2xl mb-3 text-amber-500">
+            <span class="text-3xl">🛠️</span>
+          </div>
+          <h3 class="text-white font-bold text-lg mb-2">Stories Downloader Under Maintenance 🛠️</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">
+            Instagram Stories downloading is temporarily under maintenance due to API restrictions. Please use the Reels or Photos tab for high-speed instant downloads!
+          </p>
+        </div>
+
+        <!-- Input controls group -->
+        <div id="input-controls-group" class="space-y-4">
+          <!-- Input Wrapper with layout fix (Flexbox container removes absolute positioning bugs) -->
+          <div class="w-full flex items-center justify-between rounded-xl bg-slate-900/80 border border-slate-700/60 p-1.5 focus-within:border-pink-500 transition-all shadow-inner">
+            <div class="flex items-center flex-1 min-w-0 px-2">
+              <i id="input-icon" data-lucide="link" class="w-4 h-4 text-slate-400 shrink-0 mr-2"></i>
+              <input type="text" id="urlInput" placeholder="Paste Instagram link here..." class="w-full bg-transparent text-white placeholder-slate-400 focus:outline-none text-sm py-2" />
+            </div>
+            <button id="pasteBtn" class="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold border border-slate-600/50 transition-all active:scale-95">
+              <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
+              <span>PASTE</span>
+            </button>
+          </div>
+          
+          <!-- Active Warning Area -->
+          <div id="warning-box" class="hidden animate-fade-in bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-2xl p-4 flex items-start gap-3 text-sm">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5 animate-pulse"></i>
+            <span id="warning-text"></span>
+          </div>
+
+          <!-- Guidance Text -->
+          <div class="flex items-center gap-2 px-1 text-xs text-slate-400">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-pink-500/70 flex-shrink-0"></i>
+            <span id="guidance-text">Download high-quality Instagram reels and video posts instantly.</span>
+          </div>
+
+          <!-- Download Action Button -->
+          <button 
+            id="download-btn" 
+            onclick="handleDownload()" 
+            class="w-full bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:from-pink-600 hover:to-indigo-600 text-white font-bold py-4 px-6 rounded-2xl transition-all duration-300 transform active:scale-[0.98] shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 group relative overflow-hidden"
+          >
+            <i data-lucide="download" class="w-5 h-5 group-hover:translate-y-0.5 transition-transform duration-200"></i>
+            <span class="relative z-10 font-display font-bold text-white drop-shadow-md text-center">Fetch Media</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Spinner Container -->
+      <div id="loading-spinner" class="hidden mt-8 text-center animate-fade-in py-6">
+        <div class="relative inline-flex items-center justify-center">
+          <div class="w-16 h-16 rounded-full border-4 border-purple-500/20 border-t-pink-500 animate-spin"></div>
+          <div class="absolute w-8 h-8 bg-purple-500/10 rounded-full animate-ping"></div>
+        </div>
+        <p id="loading-text" class="text-slate-300 text-sm md:text-base font-medium mt-4 tracking-wide"></p>
+      </div>
+
+      <!-- Error State Card -->
+      <div id="error-card" class="hidden mt-8 animate-fade-in bg-rose-500/10 border border-rose-500/20 rounded-3xl p-6 text-center">
+        <div class="inline-flex items-center justify-center p-3 bg-rose-500/10 rounded-2xl mb-3 text-rose-500">
+          <i data-lucide="x-circle" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-white font-semibold text-lg mb-1">Failed to Fetch Media</h3>
+        <p id="error-message" class="text-rose-300 text-sm mb-4">Please verify that your link is correct and the profile is public.</p>
+        <button onclick="retryFetch()" class="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-semibold text-white transition-all active:scale-95">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          <span>Try Again</span>
+        </button>
+      </div>
+
+      <!-- Success Result Presentation Card -->
+      <div id="result-card" class="hidden mt-8 animate-slide-up space-y-6">
+        <div class="border-t border-white/10 pt-6">
+          <h2 class="text-lg font-bold font-display text-white mb-4 flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-5 h-5 text-pink-500"></i>
+            <span>Ready for Download</span>
+          </h2>
+          
+          <div class="bg-white/[0.02] border border-white/10 rounded-2xl p-4 overflow-hidden">
+            <!-- Media Preview & Details -->
+            <div id="result-media-container" class="flex flex-col sm:flex-row gap-4">
+              <!-- Thumbnail Container -->
+              <div class="relative w-full sm:w-36 h-48 sm:h-36 rounded-xl overflow-hidden bg-black/40 flex-shrink-0 group">
+                <img id="result-thumb" src="" alt="Media Thumbnail" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-2">
+                  <span id="media-type-badge" class="px-2 py-0.5 bg-black/50 backdrop-blur-md rounded text-[10px] uppercase font-bold text-slate-300 tracking-wider">
+                    REEL
+                  </span>
+                </div>
+              </div>
+              
+              <!-- Content Details -->
+              <div class="flex-grow flex flex-col justify-between py-1">
+                <div>
+                  <h3 id="result-title" class="text-white font-semibold text-sm md:text-base line-clamp-3 mb-2">
+                    Instagram Media Content
+                  </h3>
+                  <p class="text-xs text-slate-400 flex items-center gap-1">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500"></i>
+                    <span>Ready in high quality</span>
+                  </p>
+                </div>
+                
+                <!-- Downloads Container for Single/Multiple Downloads -->
+                <div id="single-download-box" class="mt-4 sm:mt-0">
+                  <a 
+                    id="result-download-btn" 
+                    href="" 
+                    target="_blank" 
+                    download="instafetch_media"
+                    class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-pink-500/10 active:scale-95 cursor-pointer"
+                  >
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>Download Media</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Carousel container if multiple resources are found -->
+            <div id="carousel-media-box" class="hidden mt-4 pt-4 border-t border-white/5">
+              <p class="text-xs font-semibold text-slate-400 mb-2">Multiple files found:</p>
+              <div id="carousel-items" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                <!-- Dynamically loaded slides -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer Section -->
+  <footer class="py-6 text-center text-xs text-slate-600 relative z-10">
+    <p>© 2026 Insta Downloader. Built for speed and privacy. Made with ❤️ in India 🇮🇳 | Not affiliated with Instagram or Meta.</p>
+  </footer>
+
+  <!-- JS Code -->
+  <script>
+    // Global State
+    const backendBaseUrl = "http://127.0.0.1:5000";
+    let activeTab = 'reels';
+    let isWarningActive = false;
+
+    // Tabs Config
+    const tabsConfig = {
+      reels: {
+        placeholder: 'Paste Instagram Reel URL here (e.g., https://instagram.com/reel/...)',
+        guidance: 'Download high-quality Instagram reels and video posts instantly.',
+        icon: 'film',
+        loadingMessage: 'Fetching Reel video... Please wait.'
+      },
+      photos: {
+        placeholder: 'Paste Instagram Photo or Post URL here (e.g., https://instagram.com/p/...)',
+        guidance: 'Download single photos, carousel posts, and multi-slide images.',
+        icon: 'image',
+        loadingMessage: 'Loading Photos... Hang tight!'
+      },
+      stories: {
+        placeholder: 'Paste Instagram Story URL here (e.g., https://instagram.com/stories/...)',
+        guidance: 'Download active user stories. Requires valid story link.',
+        icon: 'history',
+        loadingMessage: 'Retrieving Story... Almost there!'
+      }
+    };
+
+    // Initialize Lucide Icons
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
+      setupEventListeners();
+      switchTab('reels'); // Set default Reels tab
+    });
+
+    function setupEventListeners() {
+      const urlInput = document.getElementById('urlInput');
+      const pasteBtn = document.getElementById('pasteBtn');
+
+      // Listen for text input to clean and validate
+      urlInput.addEventListener('input', (e) => {
+        sanitizeAndValidate(e.target.value);
+      });
+
+      // Handle Paste event
+      urlInput.addEventListener('paste', (e) => {
+        // Let the paste finish, then sanitize and validate
+        setTimeout(() => {
+          sanitizeAndValidate(urlInput.value);
+        }, 10);
+      });
+
+      // Native Paste Button
+      pasteBtn.addEventListener('click', async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          urlInput.value = text;
+          sanitizeAndValidate(text);
+          
+          // Focus input after pasting
+          urlInput.focus();
+        } catch (err) {
+          console.error('Clipboard access denied or unsupported:', err);
+          // Show user-friendly notification if paste permissions are blocked
+          alert('Could not access clipboard automatically. Please press Ctrl+V to paste manually.');
+        }
+      });
+
+      // Trigger download on Enter key press
+      urlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          handleDownload();
+        }
+      });
+    }
+
+    // Switch Tab
+    function switchTab(tabId) {
+      if (!tabsConfig[tabId]) return;
+      activeTab = tabId;
+
+      const reelsBtn = document.getElementById('tab-reels');
+      const photosBtn = document.getElementById('tab-photos');
+      const storiesBtn = document.getElementById('tab-stories');
+      const tabIndicator = document.getElementById('tab-indicator');
+      const urlInput = document.getElementById('urlInput');
+      const guidanceText = document.getElementById('guidance-text');
+      const inputIcon = document.getElementById('input-icon');
+      
+      const maintenanceBanner = document.getElementById('stories-maintenance-banner');
+      const inputControlsGroup = document.getElementById('input-controls-group');
+
+      // Reset Active styles
+      [reelsBtn, photosBtn, storiesBtn].forEach(btn => {
+        btn.classList.remove('text-white', 'font-bold');
+        btn.classList.add('text-slate-400', 'font-semibold');
+      });
+
+      // Set styles based on tab
+      const activeBtn = document.getElementById(`tab-${tabId}`);
+      activeBtn.classList.remove('text-slate-400', 'font-semibold');
+      activeBtn.classList.add('text-white', 'font-bold');
+
+      // Update indicator position
+      if (tabId === 'reels') {
+        tabIndicator.style.transform = 'translateX(0%)';
+      } else if (tabId === 'photos') {
+        tabIndicator.style.transform = 'translateX(100%)';
+      } else if (tabId === 'stories') {
+        tabIndicator.style.transform = 'translateX(200%)';
+      }
+
+      // Toggle maintenance notice banner for Stories tab
+      if (tabId === 'stories') {
+        inputControlsGroup.classList.add('hidden');
+        maintenanceBanner.classList.remove('hidden');
+      } else {
+        inputControlsGroup.classList.remove('hidden');
+        maintenanceBanner.classList.add('hidden');
+        
+        // Update placeholders and labels
+        urlInput.placeholder = tabsConfig[tabId].placeholder;
+        guidanceText.textContent = tabsConfig[tabId].guidance;
+        
+        // Update input icon
+        inputIcon.setAttribute('data-lucide', tabsConfig[tabId].icon);
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+        
+        // Trigger sanitization & validation on existing value
+        sanitizeAndValidate(urlInput.value);
+      }
+
+      // Clear previous results or errors
+      resetUI();
+    }
+
+    // Sanitize and Validate
+    function sanitizeAndValidate(inputValue) {
+      const urlInput = document.getElementById('urlInput');
+      const warningBox = document.getElementById('warning-box');
+      const warningText = document.getElementById('warning-text');
+      const downloadBtn = document.getElementById('download-btn');
+
+      if (!inputValue) {
+        warningBox.classList.add('hidden');
+        isWarningActive = false;
+        downloadBtn.disabled = false;
+        downloadBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+        return;
+      }
+
+      // Instantly strip query parameters (e.g. ?igsh=... or ?utm_source=...)
+      let cleanUrl = inputValue.trim();
+      if (cleanUrl.includes('?')) {
+        cleanUrl = cleanUrl.split('?')[0];
+        // Only update input if it actually changed
+        if (urlInput.value !== cleanUrl) {
+          urlInput.value = cleanUrl;
+        }
+      }
+
+      // Validate pasted URL against active tab
+      let warning = '';
+      
+      if (activeTab === 'reels') {
+        if (cleanUrl.includes('/p/')) {
+          warning = "Yeh Photo/Post link hai! Kripya 'Photos' tab par switch karein.";
+        } else if (cleanUrl.includes('/stories/')) {
+          warning = "Yeh Story link hai! Kripya 'Stories' tab par switch karein.";
+        }
+      } else if (activeTab === 'photos') {
+        if (cleanUrl.includes('/reel/') || cleanUrl.includes('/tv/')) {
+          warning = "Yeh Reel/Video link lag raha hai! Kripya 'Reels' tab par switch karein.";
+        } else if (cleanUrl.includes('/stories/')) {
+          warning = "Yeh Story link hai! Kripya 'Stories' tab par switch karein.";
+        }
+      } else if (activeTab === 'stories') {
+        if (cleanUrl.includes('/reel/') || cleanUrl.includes('/tv/')) {
+          warning = "Yeh Reel/Video link lag raha hai! Kripya 'Reels' tab par switch karein.";
+        } else if (cleanUrl.includes('/p/')) {
+          warning = "Yeh Photo/Post link hai! Kripya 'Photos' tab par switch karein.";
+        }
+      }
+
+      if (warning) {
+        warningText.textContent = warning;
+        warningBox.classList.remove('hidden');
+        isWarningActive = true;
+        downloadBtn.classList.add('opacity-60');
+      } else {
+        warningBox.classList.add('hidden');
+        isWarningActive = false;
+        downloadBtn.disabled = false;
+        downloadBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+    }
+
+    function resetUI() {
+      document.getElementById('loading-spinner').classList.add('hidden');
+      document.getElementById('error-card').classList.add('hidden');
+      document.getElementById('result-card').classList.add('hidden');
+    }
+
+    // Handles the Fetch Request
+    async function handleDownload() {
+      const urlInput = document.getElementById('urlInput');
+      const cleanUrl = urlInput.value.trim();
+
+      if (!cleanUrl) {
+        alert('Please paste or enter an Instagram URL.');
+        return;
+      }
+
+      // Hide results, error cards and warnings before initiating download
+      resetUI();
+
+      // Show loading spinner
+      const spinner = document.getElementById('loading-spinner');
+      const loadingText = document.getElementById('loading-text');
+      loadingText.textContent = tabsConfig[activeTab].loadingMessage;
+      spinner.classList.remove('hidden');
+
+      try {
+        const response = await fetch(`${backendBaseUrl}/api/download`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: cleanUrl,
+            type: activeTab
+          })
+        });
+
+        let data;
+        try {
+          data = await response.json();
+        } catch (e) {
+          data = null;
+        }
+
+        if (!response.ok) {
+          const errMsg = (data && data.error) ? data.error : `Server returned status: ${response.status}`;
+          throw new Error(errMsg);
+        }
+
+        if (data && data.status === 'error') {
+          throw new Error(data.error || 'Failed to extract media.');
+        }
+
+        renderResult(data);
+      } catch (err) {
+        console.error('Error fetching download link:', err);
+        showError(err.message || 'Check your URL or try again later.');
+      } finally {
+        spinner.classList.add('hidden');
+      }
+    }
+
+    function showError(message) {
+      const errorCard = document.getElementById('error-card');
+      const errorMsg = document.getElementById('error-message');
+      errorMsg.textContent = message;
+      errorCard.classList.remove('hidden');
+    }
+
+    function retryFetch() {
+      handleDownload();
+    }
+
+    // Robust parser to render results on success
+    function renderResult(response) {
+      const resultCard = document.getElementById('result-card');
+      const thumbImg = document.getElementById('result-thumb');
+      const titleEl = document.getElementById('result-title');
+      const downloadBtn = document.getElementById('result-download-btn');
+      const badgeEl = document.getElementById('media-type-badge');
+      const carouselBox = document.getElementById('carousel-media-box');
+      const carouselItems = document.getElementById('carousel-items');
+      const singleDlBox = document.getElementById('single-download-box');
+
+      // Reset display states
+      carouselBox.classList.add('hidden');
+      carouselItems.innerHTML = '';
+      singleDlBox.classList.remove('hidden');
+      badgeEl.textContent = activeTab.slice(0, -1); // Singular badge e.g. "REEL", "PHOTO", "STORIE"
+
+      // Extrapolate title/caption
+      let caption = "Instagram Content";
+      const captionKeys = ['title', 'caption', 'description', 'text', 'desc'];
+      for (const key of captionKeys) {
+        if (response[key]) {
+          caption = response[key];
+          break;
+        } else if (response.data && response.data[key]) {
+          caption = response.data[key];
+          break;
+        }
+      }
+      titleEl.textContent = caption;
+
+      // Find primary download URL
+      let downloadUrl = "";
+      const dlKeys = ['download_url', 'url', 'media_url', 'downloadLink', 'link', 'video_url', 'high_quality_url'];
+      
+      // Check root level
+      for (const key of dlKeys) {
+        if (response[key] && typeof response[key] === 'string') {
+          downloadUrl = response[key];
+          break;
+        }
+      }
+      
+      // Check in 'data' sub-object
+      if (!downloadUrl && response.data) {
+        for (const key of dlKeys) {
+          if (response.data[key] && typeof response.data[key] === 'string') {
+            downloadUrl = response.data[key];
+            break;
+          }
+        }
+      }
+
+      // Check if response contains array of items
+      let mediaItems = [];
+      if (Array.isArray(response)) {
+        mediaItems = response;
+      } else if (response.media && Array.isArray(response.media)) {
+        mediaItems = response.media;
+      } else if (response.data && Array.isArray(response.data)) {
+        mediaItems = response.data;
+      } else if (response.links && Array.isArray(response.links)) {
+        mediaItems = response.links;
+      }
+
+      // Extrapolate thumbnail preview image
+      let thumbnail = "";
+      const thumbKeys = ['thumbnail', 'thumb', 'preview', 'image_url', 'image', 'display_url'];
+      for (const key of thumbKeys) {
+        if (response[key] && typeof response[key] === 'string') {
+          thumbnail = response[key];
+          break;
+        } else if (response.data && response.data[key] && typeof response.data[key] === 'string') {
+          thumbnail = response.data[key];
+          break;
+        }
+      }
+
+      // Fallbacks if not found
+      if (!thumbnail) {
+        thumbnail = downloadUrl || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop';
+      }
+
+      // Set values to UI elements
+      thumbImg.onerror = function() {
+        // Fallback to premium placeholder if Instagram CDN blocks hotlinking (403)
+        this.src = 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop';
+        this.onerror = null; // Prevent infinite loop
+      };
+      thumbImg.src = thumbnail || downloadUrl;
+
+      // Handle Multiple Items Case
+      if (mediaItems.length > 1) {
+        carouselBox.classList.remove('hidden');
+        singleDlBox.classList.add('hidden');
+
+        mediaItems.forEach((item, idx) => {
+          let itemUrl = typeof item === 'string' ? item : (item.url || item.download_url || item.link);
+          let itemThumb = item.thumbnail || item.preview || item.thumb || itemUrl;
+          if (!itemUrl) return;
+
+          let isVideo = (item && item.type === 'video') || activeTab === 'reels';
+          let ext = isVideo ? 'mp4' : 'jpg';
+          let filename = `instafetch_${idx + 1}.${ext}`;
+
+          const slide = document.createElement('div');
+          slide.className = 'w-28 flex-shrink-0 bg-white/5 border border-white/10 rounded-xl overflow-hidden p-1.5 flex flex-col items-center text-center';
+          slide.innerHTML = `
+            <div class="w-full h-20 rounded-lg overflow-hidden bg-black/40 mb-2 relative">
+              <img src="${itemThumb}" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=100&auto=format&fit=crop'"/>
+              <span class="absolute bottom-1 right-1 px-1 bg-black/70 rounded text-[8px] font-bold text-slate-300">#${idx + 1}</span>
+            </div>
+            <button onclick="downloadDirect('${itemUrl}', '${filename}')" class="w-full py-1.5 bg-pink-500 hover:bg-pink-600 text-[10px] font-bold text-white rounded-md transition-colors text-center inline-block cursor-pointer">
+              DOWNLOAD
+            </button>
+          `;
+          carouselItems.appendChild(slide);
+        });
+      } else {
+        // Fallback to single link
+        const finalUrl = downloadUrl || (mediaItems[0] ? (typeof mediaItems[0] === 'string' ? mediaItems[0] : (mediaItems[0].url || mediaItems[0].download_url)) : "");
+        if (finalUrl) {
+          let ext = activeTab === 'reels' ? 'mp4' : 'jpg';
+          let filename = `instafetch_media.${ext}`;
+          downloadBtn.onclick = function(e) {
+            e.preventDefault();
+            downloadDirect(finalUrl, filename);
+          };
+          downloadBtn.href = finalUrl; // Keep fallback
+        } else {
+          showError("Success, but no download URL could be parsed. Check developer console.");
+          console.warn("Response schema not parsed correctly. Full response:", response);
+          return;
+        }
+      }
+
+      // Display the success card
+      resultCard.classList.remove('hidden');
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      }
+    }
+
+    function downloadDirect(mediaUrl, fileName) {
+      const proxyUrl = `${backendBaseUrl}/api/proxy_download?url=${encodeURIComponent(mediaUrl)}&filename=${encodeURIComponent(fileName)}`;
+      window.location.href = proxyUrl;
+    }
+  </script>
+</body>
+</html>
