@@ -746,6 +746,108 @@ def scrape_instagram_story_direct(story_id):
             
     return None
 
+def scrape_instagram_proxy(shortcode):
+    """
+    Fallback scraper using public proxy helper endpoints (ddinstagram.com / vxinstagram.com).
+    These proxies serve standard OpenGraph meta tags containing direct media URLs.
+    """
+    proxies = [
+        f"https://ddinstagram.com/p/{shortcode}/",
+        f"https://vxinstagram.com/p/{shortcode}/"
+    ]
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+    
+    for url in proxies:
+        logger.info(f"Querying Instagram proxy helper: {url}")
+        try:
+            response = requests.get(url, headers=headers, timeout=6, allow_redirects=True)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                video_url = None
+                image_url = None
+                
+                og_video = soup.find('meta', property='og:video') or soup.find('meta', attrs={'name': 'og:video'})
+                if og_video and og_video.get('content'):
+                    video_url = og_video.get('content')
+                    
+                og_image = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'og:image'})
+                if og_image and og_image.get('content'):
+                    image_url = og_image.get('content')
+                    
+                title = "Instagram Content"
+                og_desc = soup.find('meta', property='og:description') or soup.find('meta', attrs={'name': 'og:description'})
+                if og_desc and og_desc.get('content'):
+                    title = og_desc.get('content').strip()
+                    if len(title) > 100:
+                        title = title[:97] + "..."
+                        
+                if video_url:
+                    logger.info("Proxy scraper SUCCESS! Video found.")
+                    return {
+                        "status": "success",
+                        "is_proxy": True,
+                        "url": video_url.replace('&amp;', '&'),
+                        "thumbnail": image_url or video_url,
+                        "title": title,
+                        "type": "video"
+                    }
+                elif image_url:
+                    logger.info("Proxy scraper SUCCESS! Photo found.")
+                    return {
+                        "status": "success",
+                        "is_proxy": True,
+                        "url": image_url,
+                        "thumbnail": image_url,
+                        "title": title,
+                        "type": "photo"
+                    }
+        except Exception as e:
+            logger.warning(f"Failed to query proxy {url}: {e}")
+            
+    return None
+
+def scrape_instagram_oembed(url):
+    """
+    Fallback scraper using Instagram's public oEmbed API.
+    Retrieves direct high-res image source (thumbnail_url) and title metadata.
+    """
+    oembed_url = f"https://api.instagram.com/oembed/?url={urllib.parse.quote(url)}"
+    logger.info(f"Querying Instagram oEmbed API: {oembed_url}")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        response = requests.get(oembed_url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            image_url = data.get("thumbnail_url")
+            title = data.get("title") or "Instagram Content"
+            if len(title) > 100:
+                title = title[:97] + "..."
+                
+            if image_url:
+                logger.info("oEmbed API scraper SUCCESS!")
+                return {
+                    "status": "success",
+                    "is_oembed": True,
+                    "url": image_url,
+                    "thumbnail": image_url,
+                    "title": title,
+                    "type": "photo"
+                }
+    except Exception as e:
+        logger.warning(f"oEmbed API query failed: {e}")
+        
+    return None
+
 @app.route('/api/fetch', methods=['POST', 'GET'])
 @app.route('/api/download', methods=['POST', 'GET'])
 @app.route('/download', methods=['POST', 'GET'])
@@ -850,6 +952,17 @@ def download_media():
                 logger.info(f"Cobalt/yt-dlp failed. Falling back to Direct Story Scraper for ID: {story_id}")
                 result = scrape_instagram_story_direct(story_id)
             
+    # --- Universal Failsafe Proxy and oEmbed Fallbacks ---
+    if not result:
+        shortcode = extract_shortcode(clean_url)
+        if shortcode:
+            logger.info(f"All standard scraping failed. Trying universal proxy scraper fallback for shortcode: {shortcode}")
+            result = scrape_instagram_proxy(shortcode)
+            
+    if not result:
+        logger.info("All standard and proxy scraping failed. Trying universal oEmbed API fallback.")
+        result = scrape_instagram_oembed(clean_url)
+            
     # --- Validate Results ---
     if result and result.get("status") == "success":
         is_bypass = (
@@ -857,7 +970,9 @@ def download_media():
             result.get("is_ytdlp", False) or 
             result.get("is_api", False) or 
             result.get("is_embed", False) or 
-            result.get("is_story_scraper", False)
+            result.get("is_story_scraper", False) or
+            result.get("is_proxy", False) or
+            result.get("is_oembed", False)
         )
         
         main_url = result.get("url")
