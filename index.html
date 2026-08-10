@@ -701,7 +701,8 @@
         // Fallback to single link
         const finalUrl = downloadUrl || (mediaItems[0] ? (typeof mediaItems[0] === 'string' ? mediaItems[0] : (mediaItems[0].url || mediaItems[0].download_url)) : "");
         if (finalUrl) {
-          let ext = activeTab === 'reels' ? 'mp4' : 'jpg';
+          let isVideo = response.type === 'video' || response.type === 'story' || activeTab === 'reels';
+          let ext = isVideo ? 'mp4' : 'jpg';
           let filename = `instafetch_media.${ext}`;
           downloadBtn.onclick = function(e) {
             e.preventDefault();

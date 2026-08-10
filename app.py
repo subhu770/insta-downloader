@@ -304,6 +304,7 @@ def extract_with_ytdlp(url):
 def parse_graphql_media(media):
     """
     Parses media payload from the Instagram GraphQL shortcode media endpoint.
+    Supports single videos, photos, carousels, and photo posts with music overlays.
     """
     if not media:
         return None
@@ -336,6 +337,7 @@ def parse_graphql_media(media):
         if media_list:
             return {
                 "status": "success",
+                "is_api": True,
                 "url": media_list[0]["url"],
                 "thumbnail": media_list[0]["thumbnail"],
                 "title": title,
@@ -343,23 +345,37 @@ def parse_graphql_media(media):
                 "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
             }
             
-    # Handle Single Video / Reel
+    # Handle Single Video / Reel (also covers photos with audio overlays mapped as video)
     if media.get("is_video") or typename == "GraphVideo":
         video_url = media.get("video_url")
         if video_url:
             return {
                 "status": "success",
+                "is_api": True,
                 "url": video_url,
                 "thumbnail": media.get("display_url") or video_url,
                 "title": title,
                 "type": "video"
             }
+        else:
+            # Fallback to high-res display_url (photo) if video_url is missing
+            display_url = media.get("display_url")
+            if display_url:
+                return {
+                    "status": "success",
+                    "is_api": True,
+                    "url": display_url,
+                    "thumbnail": display_url,
+                    "title": title,
+                    "type": "photo"
+                }
             
     # Handle Single Photo
     display_url = media.get("display_url")
     if display_url:
         return {
             "status": "success",
+            "is_api": True,
             "url": display_url,
             "thumbnail": display_url,
             "title": title,
@@ -371,6 +387,7 @@ def parse_graphql_media(media):
 def parse_instagram_api_item(item):
     """
     Parses media payload from the Instagram standard json endpoint.
+    Supports single videos, photos, carousels, and photo posts with music overlays.
     """
     if not item:
         return None
@@ -416,6 +433,7 @@ def parse_instagram_api_item(item):
         if media_list:
             return {
                 "status": "success",
+                "is_api": True,
                 "url": media_list[0]["url"],
                 "thumbnail": media_list[0]["thumbnail"],
                 "title": title,
@@ -423,7 +441,7 @@ def parse_instagram_api_item(item):
                 "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
             }
             
-    # Single Video / Reel (media_type == 2)
+    # Single Video / Reel (media_type == 2) (covers photos with audio overlays mapped as video)
     if media_type == 2 or "video_versions" in item:
         video_versions = item.get("video_versions", [])
         if video_versions:
@@ -436,11 +454,27 @@ def parse_instagram_api_item(item):
             if video_url:
                 return {
                     "status": "success",
+                    "is_api": True,
                     "url": video_url,
                     "thumbnail": thumb or video_url,
                     "title": title,
                     "type": "video"
                 }
+        
+        # Fallback to high-res image candidates if video_versions is empty
+        if "image_versions2" in item:
+            candidates = item["image_versions2"].get("candidates", [])
+            if candidates:
+                img_url = candidates[0].get("url")
+                if img_url:
+                    return {
+                        "status": "success",
+                        "is_api": True,
+                        "url": img_url,
+                        "thumbnail": img_url,
+                        "title": title,
+                        "type": "photo"
+                    }
                 
     # Single Photo (media_type == 1)
     if "image_versions2" in item:
@@ -450,6 +484,7 @@ def parse_instagram_api_item(item):
             if img_url:
                 return {
                     "status": "success",
+                    "is_api": True,
                     "url": img_url,
                     "thumbnail": img_url,
                     "title": title,
@@ -505,7 +540,7 @@ def scrape_instagram_api(shortcode):
 
 def scrape_instagram_embed(shortcode):
     """
-    Scrapes the Instagram Embed Page and parses meta tags for single photos.
+    Scrapes the Instagram Embed Page and parses meta tags for single photos or videos (including music overlay posts).
     """
     embed_url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
     logger.info(f"Scraping Instagram Embed: {embed_url}")
@@ -517,44 +552,60 @@ def scrape_instagram_embed(shortcode):
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            video_url = None
             image_url = None
             
-            # 1. Extract from og:image meta tag
+            # 1. Try to extract video URL (og:video)
+            og_video = soup.find('meta', property='og:video') or soup.find('meta', attrs={'name': 'og:video'})
+            if og_video and og_video.get('content'):
+                video_url = og_video.get('content')
+                
+            # 2. Extract from og:image meta tag
             og_image = soup.find('meta', property='og:image')
             if og_image and og_image.get('content'):
                 image_url = og_image.get('content')
                 
-            # 2. Extract from twitter:image meta tag
+            # 3. Extract from twitter:image meta tag
             if not image_url:
                 tw_image = soup.find('meta', attrs={'name': 'twitter:image'})
                 if tw_image and tw_image.get('content'):
                     image_url = tw_image.get('content')
                     
-            # 3. Extract from .EmbeddedMediaImage class tags
+            # 4. Extract from .EmbeddedMediaImage class tags
             if not image_url:
                 img_tag = soup.find('img', class_='EmbeddedMediaImage') or soup.select_one('.EmbeddedMediaImage')
                 if img_tag and img_tag.get('src'):
                     image_url = img_tag.get('src')
                     
-            # Double fallback to any cdninstagram image in the page
+            # Double fallback to any cdninstagram image in the page (validated)
             if not image_url:
                 for img in soup.find_all('img'):
                     src = img.get('src')
-                    if src and 'cdninstagram.com' in src and not src.startswith('data:'):
+                    if src and is_valid_instagram_cdn_media(src):
                         image_url = src
                         break
                         
             # Extract post caption as title
-            title = "Instagram Photo"
+            title = "Instagram Content"
             caption_div = soup.find('div', class_='Caption') or soup.find('div', class_='CaptionText')
             if caption_div:
                 title = caption_div.get_text().strip()
                 if len(title) > 100:
                     title = title[:97] + "..."
                     
-            if image_url:
+            if video_url:
                 return {
                     "status": "success",
+                    "is_embed": True,
+                    "url": video_url.replace('&amp;', '&').replace('\\u0026', '&'),
+                    "thumbnail": image_url or video_url,
+                    "title": title,
+                    "type": "video"
+                }
+            elif image_url:
+                return {
+                    "status": "success",
+                    "is_embed": True,
                     "url": image_url,
                     "thumbnail": image_url,
                     "title": title,
@@ -611,6 +662,7 @@ def scrape_instagram_story_direct(story_id):
                         logger.info(f"Direct Story Scraper SUCCESS! Extracted URL: {extracted_url[:120]}")
                         return {
                             "status": "success",
+                            "is_story_scraper": True,
                             "url": extracted_url,
                             "thumbnail": extracted_url,
                             "title": "Instagram Story",
@@ -727,7 +779,13 @@ def download_media():
             
     # --- Validate Results ---
     if result and result.get("status") == "success":
-        is_bypass = result.get("is_cobalt", False) or result.get("is_ytdlp", False)
+        is_bypass = (
+            result.get("is_cobalt", False) or 
+            result.get("is_ytdlp", False) or 
+            result.get("is_api", False) or 
+            result.get("is_embed", False) or 
+            result.get("is_story_scraper", False)
+        )
         
         main_url = result.get("url")
         if main_url and not is_bypass and not is_valid_instagram_cdn_media(main_url):
