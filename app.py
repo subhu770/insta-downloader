@@ -71,13 +71,16 @@ def get_headers(referer="https://www.instagram.com/", use_googlebot=False):
 
 def sanitize_url(url):
     """
-    Strips any query parameters inside Python before processing.
+    Strips any query parameters and trailing spaces/slashes from an Instagram URL.
     """
     if not url:
         return ""
     url = url.strip()
-    if "?" in url:
-        url = url.split("?")[0]
+    # Strip tracking parameters starting with ? or #
+    url = re.split(r'[?#]', url)[0]
+    # Strip trailing slash if present (except for root domain)
+    if url.endswith('/') and len(url) > 25:
+        url = url[:-1]
     return url
 
 def is_valid_instagram_cdn_media(url):
@@ -233,30 +236,66 @@ def try_cobalt(url):
 
 def extract_with_ytdlp(url):
     """
-    Fallback extractor using yt-dlp to retrieve video and metadata.
+    Fallback extractor using yt-dlp with custom User-Agent headers to retrieve video, photo or carousel.
     """
     logger.info(f"Attempting fallback extraction with yt-dlp: {url}")
+    user_agent = random.choice(MODERN_USER_AGENTS[:-1])
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'format': 'best',
-        'socket_timeout': 6,
+        'socket_timeout': 8,
+        'http_headers': {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
+        }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            
+            # Check if it's a playlist or multiple files (like carousel)
+            if 'entries' in info:
+                media_list = []
+                for entry in info['entries']:
+                    if entry:
+                        entry_url = entry.get('url')
+                        entry_thumb = entry.get('thumbnail') or entry_url
+                        is_video = entry.get('ext') == 'mp4' or entry.get('vcodec') != 'none' or entry.get('width') is None
+                        if entry_url:
+                            media_list.append({
+                                "url": entry_url,
+                                "thumbnail": entry_thumb,
+                                "type": "video" if is_video else "photo"
+                            })
+                if media_list:
+                    return {
+                        "status": "success",
+                        "is_ytdlp": True,
+                        "url": media_list[0]["url"],
+                        "thumbnail": media_list[0]["thumbnail"],
+                        "title": info.get('title') or "Instagram Carousel",
+                        "media": media_list,
+                        "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
+                    }
+            
+            # Single media item
             media_url = info.get('url')
             if media_url:
                 thumbnail = info.get('thumbnail') or info.get('thumbnails', [{}])[0].get('url') or media_url
                 title = info.get('title') or info.get('description') or "Instagram Media"
                 if len(title) > 100:
                     title = title[:97] + "..."
+                is_video = info.get('ext') == 'mp4' or info.get('vcodec') != 'none'
                 return {
                     "status": "success",
                     "is_ytdlp": True,
                     "url": media_url,
                     "thumbnail": thumbnail,
-                    "title": title
+                    "title": title,
+                    "type": "video" if is_video else "photo"
                 }
     except Exception as e:
         logger.error(f"yt-dlp extraction failed: {e}")
@@ -621,14 +660,14 @@ def download_media():
     if media_type == "reel":
         # 1. Try Cobalt API rotation
         result = try_cobalt(clean_url)
-        # 2. Try public API/GraphQL scraping fallback
+        # 2. Try yt-dlp fallback (with browser User-Agent)
+        if not result:
+            result = extract_with_ytdlp(clean_url)
+        # 3. Try public API/GraphQL scraping fallback
         if not result:
             shortcode = extract_shortcode(clean_url)
             if shortcode:
                 result = scrape_instagram_api(shortcode)
-        # 3. Fallback to yt-dlp
-        if not result:
-            result = extract_with_ytdlp(clean_url)
             
     # --- Handler: PHOTOS ---
     elif media_type == "photo":
@@ -641,17 +680,17 @@ def download_media():
             logger.info("Cobalt returned success but empty media/url. Invalidating Cobalt result.")
             result = None
             
-        # 2. Try public API/GraphQL scraping fallback (handles single/carousel photos)
+        # 2. Try yt-dlp fallback (with browser User-Agent)
+        if not result:
+            result = extract_with_ytdlp(clean_url)
+
+        # 3. Try public API/GraphQL scraping fallback (handles single/carousel photos)
         if not result and shortcode:
             result = scrape_instagram_api(shortcode)
 
-        # 3. Fallback to Embed Page Scraping (reliable for single photos via Googlebot User-Agent)
+        # 4. Fallback to Embed Page Scraping (reliable for single photos via Googlebot User-Agent)
         if not result and shortcode:
             result = scrape_instagram_embed(shortcode)
-            
-        # 4. Final fallback to yt-dlp
-        if not result:
-            result = extract_with_ytdlp(clean_url)
             
     # --- Handler: STORIES ---
     elif media_type == "story":
@@ -664,12 +703,16 @@ def download_media():
         # 1. Try Cobalt API rotation
         result = try_cobalt(clean_url)
         
-        # 2. Fallback to Direct Story Scraper (if story ID is available)
+        # 2. Try yt-dlp fallback (with browser User-Agent)
+        if not result:
+            result = extract_with_ytdlp(clean_url)
+
+        # 3. Fallback to Direct Story Scraper (if story ID is available)
         if not result:
             story_id_match = re.search(r'/stories/[^/]+/([0-9A-Za-z_-]+)', clean_url)
             if story_id_match:
                 story_id = story_id_match.group(1)
-                logger.info(f"Cobalt failed. Falling back to Direct Story Scraper for ID: {story_id}")
+                logger.info(f"Cobalt/yt-dlp failed. Falling back to Direct Story Scraper for ID: {story_id}")
                 result = scrape_instagram_story_direct(story_id)
             
     # --- Validate Results ---
