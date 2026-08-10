@@ -538,9 +538,57 @@ def scrape_instagram_api(shortcode):
         
     return None
 
+def extract_json_from_html(html_text):
+    """
+    Safely extracts nested JSON objects containing Instagram post data from script blocks.
+    Locates matching target variables and balances braces dynamically.
+    """
+    import json
+    for target in ['"shortcode_media"', '"graphql"', '"items"']:
+        idx = html_text.find(target)
+        if idx == -1:
+            continue
+            
+        # Search backwards for '{'
+        start_idx = html_text.rfind('{', 0, idx)
+        if start_idx == -1:
+            continue
+            
+        brace_count = 0
+        in_string = False
+        escape = False
+        
+        for i in range(start_idx, len(html_text)):
+            char = html_text[i]
+            if escape:
+                escape = False
+                continue
+            if char == '\\':
+                escape = True
+                continue
+            if char == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_str = html_text[start_idx:i+1]
+                        try:
+                            data = json.loads(json_str)
+                            if data:
+                                return data
+                        except Exception:
+                            pass
+                        break
+    return None
+
 def scrape_instagram_embed(shortcode):
     """
     Scrapes the Instagram Embed Page and parses meta tags for single photos or videos (including music overlay posts).
+    Attempts to extract rich JSON data first (crucial for carousels / multi-item posts).
     """
     embed_url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
     logger.info(f"Scraping Instagram Embed: {embed_url}")
@@ -550,6 +598,31 @@ def scrape_instagram_embed(shortcode):
     try:
         response = requests.get(embed_url, headers=headers, timeout=8, verify=False)
         if response.status_code == 200:
+            # 1. Try to extract rich JSON data first (crucial for carousels / multi-item posts)
+            try:
+                data = extract_json_from_html(response.text)
+                if data:
+                    media = None
+                    if "shortcode_media" in data:
+                        media = data["shortcode_media"]
+                    elif "graphql" in data and "shortcode_media" in data["graphql"]:
+                        media = data["graphql"]["shortcode_media"]
+                    elif "items" in data and len(data["items"]) > 0:
+                        media = data["items"][0]
+                        
+                    if media:
+                        if "items" in data or "media_type" in media:
+                            res = parse_instagram_api_item(media)
+                        else:
+                            res = parse_graphql_media(media)
+                        if res:
+                            res["is_embed"] = True
+                            logger.info("Successfully extracted rich Carousel/Post JSON from embed HTML script!")
+                            return res
+            except Exception as je:
+                logger.warning(f"Failed to parse rich JSON from embed scripts: {je}")
+
+            # 2. Fallback to basic meta tags for single items
             soup = BeautifulSoup(response.text, 'html.parser')
             
             video_url = None
