@@ -846,6 +846,9 @@ def scrape_instagram_oembed(url):
 
 @app.route('/api/fetch', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/fetch', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/index.py/fetch', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/index.py', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/index.py', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/api/download', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/download', methods=['GET', 'POST', 'OPTIONS'])
 def download_media():
@@ -1039,6 +1042,7 @@ def download_media():
 
 @app.route('/api/proxy_download', methods=['GET', 'OPTIONS'])
 @app.route('/proxy_download', methods=['GET', 'OPTIONS'])
+@app.route('/api/index.py/proxy_download', methods=['GET', 'OPTIONS'])
 def proxy_download():
     if request.method == 'OPTIONS':
         response = Response()
