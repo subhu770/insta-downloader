@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import logging
 import requests
 import urllib.parse
@@ -36,6 +37,37 @@ COBALT_INSTANCES = [
     "https://nuko-c.meowing.de",
     "https://subito-c.meowing.de"
 ]
+
+# Modern desktop and mobile User-Agents to bypass Instagram bot detection
+MODERN_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+]
+
+def get_headers(referer="https://www.instagram.com/", use_googlebot=False):
+    """
+    Generates realistic browser headers for web scraping.
+    """
+    if use_googlebot:
+        ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+    else:
+        # Rotate among standard browser agents
+        ua = random.choice(MODERN_USER_AGENTS[:-1])
+        
+    return {
+        "User-Agent": ua,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "X-IG-App-ID": "936619743392459",  # Tells IG that we are calling from the Web app
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": referer,
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
+    }
 
 def sanitize_url(url):
     """
@@ -142,7 +174,7 @@ def try_cobalt(url):
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": random.choice(MODERN_USER_AGENTS[:-1])
     }
     
     endpoints = ["https://api.cobalt.tools"] + COBALT_INSTANCES
@@ -167,6 +199,7 @@ def try_cobalt(url):
                     if media_url:
                         return {
                             "status": "success",
+                            "is_cobalt": True,
                             "url": media_url,
                             "thumbnail": media_url,
                             "title": "Instagram Media"
@@ -189,6 +222,7 @@ def try_cobalt(url):
                         first_item = media_list[0]
                         return {
                             "status": "success",
+                            "is_cobalt": True,
                             "url": first_item["url"],
                             "thumbnail": first_item["thumbnail"],
                             "title": "Instagram Carousel",
@@ -219,12 +253,215 @@ def extract_with_ytdlp(url):
                     title = title[:97] + "..."
                 return {
                     "status": "success",
+                    "is_ytdlp": True,
                     "url": media_url,
                     "thumbnail": thumbnail,
                     "title": title
                 }
     except Exception as e:
         logger.error(f"yt-dlp extraction failed: {e}")
+    return None
+
+def parse_graphql_media(media):
+    """
+    Parses media payload from the Instagram GraphQL shortcode media endpoint.
+    """
+    if not media:
+        return None
+        
+    typename = media.get("__typename")
+    title = "Instagram Media"
+    try:
+        caption_edges = media.get("edge_media_to_caption", {}).get("edges", [])
+        if caption_edges:
+            title = caption_edges[0].get("node", {}).get("text", "Instagram Media")
+            if len(title) > 100:
+                title = title[:97] + "..."
+    except Exception:
+        pass
+        
+    # Handle Carousel / Multi-slide Post
+    if typename == "GraphSidecar" or "edge_sidecar_to_children" in media:
+        children = media.get("edge_sidecar_to_children", {}).get("edges", [])
+        media_list = []
+        for child in children:
+            node = child.get("node", {})
+            is_video = node.get("is_video", False)
+            url = node.get("video_url") if is_video else node.get("display_url")
+            if url:
+                media_list.append({
+                    "url": url,
+                    "thumbnail": node.get("display_url") or url,
+                    "type": "video" if is_video else "photo"
+                })
+        if media_list:
+            return {
+                "status": "success",
+                "url": media_list[0]["url"],
+                "thumbnail": media_list[0]["thumbnail"],
+                "title": title,
+                "media": media_list,
+                "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
+            }
+            
+    # Handle Single Video / Reel
+    if media.get("is_video") or typename == "GraphVideo":
+        video_url = media.get("video_url")
+        if video_url:
+            return {
+                "status": "success",
+                "url": video_url,
+                "thumbnail": media.get("display_url") or video_url,
+                "title": title,
+                "type": "video"
+            }
+            
+    # Handle Single Photo
+    display_url = media.get("display_url")
+    if display_url:
+        return {
+            "status": "success",
+            "url": display_url,
+            "thumbnail": display_url,
+            "title": title,
+            "type": "photo"
+        }
+        
+    return None
+
+def parse_instagram_api_item(item):
+    """
+    Parses media payload from the Instagram standard json endpoint.
+    """
+    if not item:
+        return None
+        
+    title = "Instagram Media"
+    try:
+        caption = item.get("caption") or {}
+        if caption.get("text"):
+            title = caption.get("text")
+            if len(title) > 100:
+                title = title[:97] + "..."
+    except Exception:
+        pass
+        
+    media_type = item.get("media_type")
+    
+    # Carousel / Album (media_type == 8)
+    if media_type == 8 or "carousel_media" in item:
+        carousel_media = item.get("carousel_media", [])
+        media_list = []
+        for part in carousel_media:
+            part_type = part.get("media_type")
+            url = None
+            if part_type == 2 and "video_versions" in part:
+                url = part["video_versions"][0].get("url")
+            elif "image_versions2" in part:
+                candidates = part["image_versions2"].get("candidates", [])
+                if candidates:
+                    url = candidates[0].get("url")
+            
+            thumb = None
+            if "image_versions2" in part:
+                candidates = part["image_versions2"].get("candidates", [])
+                if candidates:
+                    thumb = candidates[0].get("url")
+                    
+            if url:
+                media_list.append({
+                    "url": url,
+                    "thumbnail": thumb or url,
+                    "type": "video" if part_type == 2 else "photo"
+                })
+        if media_list:
+            return {
+                "status": "success",
+                "url": media_list[0]["url"],
+                "thumbnail": media_list[0]["thumbnail"],
+                "title": title,
+                "media": media_list,
+                "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
+            }
+            
+    # Single Video / Reel (media_type == 2)
+    if media_type == 2 or "video_versions" in item:
+        video_versions = item.get("video_versions", [])
+        if video_versions:
+            video_url = video_versions[0].get("url")
+            thumb = None
+            if "image_versions2" in item:
+                candidates = item["image_versions2"].get("candidates", [])
+                if candidates:
+                    thumb = candidates[0].get("url")
+            if video_url:
+                return {
+                    "status": "success",
+                    "url": video_url,
+                    "thumbnail": thumb or video_url,
+                    "title": title,
+                    "type": "video"
+                }
+                
+    # Single Photo (media_type == 1)
+    if "image_versions2" in item:
+        candidates = item["image_versions2"].get("candidates", [])
+        if candidates:
+            img_url = candidates[0].get("url")
+            if img_url:
+                return {
+                    "status": "success",
+                    "url": img_url,
+                    "thumbnail": img_url,
+                    "title": title,
+                    "type": "photo"
+                }
+                
+    return None
+
+def scrape_instagram_api(shortcode):
+    """
+    Queries public JSON/GraphQL API endpoints to scrape Instagram metadata.
+    """
+    headers = get_headers(referer=f"https://www.instagram.com/p/{shortcode}/", use_googlebot=False)
+    
+    # Method 1: Try public JSON endpoint
+    json_url = f"https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis"
+    logger.info(f"Attempting API extraction via JSON: {json_url}")
+    try:
+        response = requests.get(json_url, headers=headers, timeout=7, verify=False)
+        if response.status_code == 200:
+            data = response.json()
+            if "items" in data and len(data["items"]) > 0:
+                item = data["items"][0]
+                res = parse_instagram_api_item(item)
+                if res:
+                    return res
+            elif "graphql" in data:
+                media = data["graphql"].get("shortcode_media", {})
+                res = parse_graphql_media(media)
+                if res:
+                    return res
+    except Exception as e:
+        logger.warning(f"JSON endpoint scraping failed: {e}")
+
+    # Method 2: Try direct GraphQL query hash endpoint
+    query_hash = "b3055c50c4b22732269ced901501293c"
+    variables = urllib.parse.quote(f'{{"shortcode":"{shortcode}"}}')
+    gql_url = f"https://www.instagram.com/graphql/query/?query_hash={query_hash}&variables={variables}"
+    logger.info(f"Attempting API extraction via GraphQL: {gql_url}")
+    try:
+        response = requests.get(gql_url, headers=headers, timeout=7, verify=False)
+        if response.status_code == 200:
+            data = response.json()
+            media = data.get("data", {}).get("shortcode_media", {})
+            if media:
+                res = parse_graphql_media(media)
+                if res:
+                    return res
+    except Exception as e:
+        logger.warning(f"GraphQL endpoint scraping failed: {e}")
+        
     return None
 
 def scrape_instagram_embed(shortcode):
@@ -234,11 +471,7 @@ def scrape_instagram_embed(shortcode):
     embed_url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
     logger.info(f"Scraping Instagram Embed: {embed_url}")
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.instagram.com/"
-    }
+    headers = get_headers(referer="https://www.instagram.com/", use_googlebot=True)
     
     try:
         response = requests.get(embed_url, headers=headers, timeout=8, verify=False)
@@ -302,54 +535,50 @@ def scrape_instagram_story_direct(story_id):
         f"https://www.instagram.com/p/{story_id}/embed/captioned/"
     ]
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.instagram.com/"
-    }
-    
     for url in urls:
         logger.info(f"Direct Story Scraper querying: {url}")
-        try:
-            response = requests.get(url, headers=headers, timeout=8, verify=False)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                extracted_url = None
-                
-                # 1. Try og:video (for video stories)
-                og_video = soup.find('meta', property='og:video') or soup.find('meta', attrs={'name': 'og:video'})
-                if og_video and og_video.get('content'):
-                    extracted_url = og_video.get('content')
+        for use_bot in [True, False]:
+            headers = get_headers(referer="https://www.instagram.com/", use_googlebot=use_bot)
+            try:
+                response = requests.get(url, headers=headers, timeout=8, verify=False)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
                     
-                # 2. Try twitter:player (video fallback)
-                if not extracted_url:
-                    tw_player = soup.find('meta', attrs={'name': 'twitter:player'}) or soup.find('meta', property='twitter:player')
-                    if tw_player and tw_player.get('content'):
-                        extracted_url = tw_player.get('content')
+                    extracted_url = None
+                    
+                    # 1. Try og:video (for video stories)
+                    og_video = soup.find('meta', property='og:video') or soup.find('meta', attrs={'name': 'og:video'})
+                    if og_video and og_video.get('content'):
+                        extracted_url = og_video.get('content')
                         
-                # 3. Try og:image (for photo stories)
-                if not extracted_url:
-                    og_image = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
-                    if og_image and og_image.get('content'):
-                        extracted_url = og_image.get('content')
-                        
-                if extracted_url:
-                    extracted_url = extracted_url.replace('&amp;', '&').replace('\\u0026', '&')
-                    if 'profile_pic' in extracted_url:
-                        logger.info("Direct scraper matched profile picture. Skipping.")
-                        continue
-                        
-                    logger.info(f"Direct Story Scraper SUCCESS! Extracted URL: {extracted_url[:120]}")
-                    return {
-                        "status": "success",
-                        "url": extracted_url,
-                        "thumbnail": extracted_url,
-                        "title": "Instagram Story",
-                        "type": "story"
-                    }
-        except Exception as e:
-            logger.error(f"Direct Story Scraper failed for url {url}: {e}")
+                    # 2. Try twitter:player (video fallback)
+                    if not extracted_url:
+                        tw_player = soup.find('meta', attrs={'name': 'twitter:player'}) or soup.find('meta', property='twitter:player')
+                        if tw_player and tw_player.get('content'):
+                            extracted_url = tw_player.get('content')
+                            
+                    # 3. Try og:image (for photo stories)
+                    if not extracted_url:
+                        og_image = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
+                        if og_image and og_image.get('content'):
+                            extracted_url = og_image.get('content')
+                            
+                    if extracted_url:
+                        extracted_url = extracted_url.replace('&amp;', '&').replace('\\u0026', '&')
+                        if 'profile_pic' in extracted_url:
+                            logger.info("Direct scraper matched profile picture. Skipping.")
+                            continue
+                            
+                        logger.info(f"Direct Story Scraper SUCCESS! Extracted URL: {extracted_url[:120]}")
+                        return {
+                            "status": "success",
+                            "url": extracted_url,
+                            "thumbnail": extracted_url,
+                            "title": "Instagram Story",
+                            "type": "story"
+                        }
+            except Exception as e:
+                logger.error(f"Direct Story Scraper failed for url {url} with bot={use_bot}: {e}")
             
     return None
 
@@ -391,7 +620,12 @@ def download_media():
     if media_type == "reel":
         # 1. Try Cobalt API rotation
         result = try_cobalt(clean_url)
-        # 2. Fallback to yt-dlp
+        # 2. Try public API/GraphQL scraping fallback
+        if not result:
+            shortcode = extract_shortcode(clean_url)
+            if shortcode:
+                result = scrape_instagram_api(shortcode)
+        # 3. Fallback to yt-dlp
         if not result:
             result = extract_with_ytdlp(clean_url)
             
@@ -406,11 +640,15 @@ def download_media():
             logger.info("Cobalt returned success but empty media/url. Invalidating Cobalt result.")
             result = None
             
-        # 2. Fallback to Embed Page Scraping (reliable for single photos via Googlebot User-Agent)
+        # 2. Try public API/GraphQL scraping fallback (handles single/carousel photos)
+        if not result and shortcode:
+            result = scrape_instagram_api(shortcode)
+
+        # 3. Fallback to Embed Page Scraping (reliable for single photos via Googlebot User-Agent)
         if not result and shortcode:
             result = scrape_instagram_embed(shortcode)
             
-        # 3. Final fallback to yt-dlp
+        # 4. Final fallback to yt-dlp
         if not result:
             result = extract_with_ytdlp(clean_url)
             
@@ -435,13 +673,15 @@ def download_media():
             
     # --- Validate Results ---
     if result and result.get("status") == "success":
+        is_bypass = result.get("is_cobalt", False) or result.get("is_ytdlp", False)
+        
         main_url = result.get("url")
-        if main_url and not is_valid_instagram_cdn_media(main_url):
+        if main_url and not is_bypass and not is_valid_instagram_cdn_media(main_url):
             logger.info(f"Invalid main URL filtered: {main_url}")
             result["url"] = None
             
         thumb_url = result.get("thumbnail")
-        if thumb_url and not is_valid_instagram_cdn_media(thumb_url):
+        if thumb_url and not is_bypass and not is_valid_instagram_cdn_media(thumb_url):
             logger.info(f"Invalid thumbnail URL filtered: {thumb_url}")
             result["thumbnail"] = None
             
@@ -449,9 +689,9 @@ def download_media():
             valid_media = []
             for item in result["media"]:
                 item_url = item.get("url")
-                if item_url and is_valid_instagram_cdn_media(item_url):
+                if is_bypass or (item_url and is_valid_instagram_cdn_media(item_url)):
                     item_thumb = item.get("thumbnail")
-                    if item_thumb and not is_valid_instagram_cdn_media(item_thumb):
+                    if item_thumb and not is_bypass and not is_valid_instagram_cdn_media(item_thumb):
                         item["thumbnail"] = item_url
                     valid_media.append(item)
                 else:
