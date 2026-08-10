@@ -582,6 +582,7 @@ def scrape_instagram_story_direct(story_id):
             
     return None
 
+@app.route('/api/fetch', methods=['POST', 'GET'])
 @app.route('/api/download', methods=['POST', 'GET'])
 @app.route('/download', methods=['POST', 'GET'])
 def download_media():

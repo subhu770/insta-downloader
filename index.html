@@ -299,7 +299,7 @@
   <!-- JS Code -->
   <script>
     // Global State
-    const backendBaseUrl = "https://insta-downloader-ptqv.onrender.com";
+    const backendBaseUrl = "";
     let activeTab = 'reels';
     let isWarningActive = false;
 
@@ -548,7 +548,7 @@
       spinner.classList.remove('hidden');
 
       try {
-        const response = await fetchWithRetry(`${backendBaseUrl}/api/download`, {
+        const response = await fetchWithRetry(`${backendBaseUrl}/api/fetch`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
