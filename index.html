@@ -299,7 +299,7 @@
   <!-- JS Code -->
   <script>
     // Global State
-    const backendBaseUrl = "http://127.0.0.1:5000";
+    const backendBaseUrl = "https://insta-downloader-ptqv.onrender.com";
     let activeTab = 'reels';
     let isWarningActive = false;
 
@@ -504,6 +504,30 @@
       document.getElementById('result-card').classList.add('hidden');
     }
 
+    // Helper function to handle fetch with retry logic for backend cold starts
+    async function fetchWithRetry(url, options, maxAttempts = 6, delayMs = 5000) {
+      const loadingText = document.getElementById('loading-text');
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          if (attempt > 1) {
+            loadingText.textContent = `Server is waking up (Cold start detected)... Retrying (${attempt}/${maxAttempts})`;
+          }
+          const response = await fetch(url, options);
+          if (response.status === 502 || response.status === 503 || response.status === 504) {
+            throw new Error(`Server is starting up (status code ${response.status})`);
+          }
+          return response;
+        } catch (err) {
+          console.warn(`Fetch attempt ${attempt} failed:`, err);
+          if (attempt === maxAttempts) {
+            throw err;
+          }
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
     // Handles the Fetch Request
     async function handleDownload() {
       const urlInput = document.getElementById('urlInput');
@@ -524,7 +548,7 @@
       spinner.classList.remove('hidden');
 
       try {
-        const response = await fetch(`${backendBaseUrl}/api/download`, {
+        const response = await fetchWithRetry(`${backendBaseUrl}/api/download`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

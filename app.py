@@ -15,8 +15,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# Enable CORS for all domains to support requests from the frontend client
-CORS(app)
+# Enable CORS for production Vercel deployment and local development origins
+CORS(app, resources={r"/*": {
+    "origins": [
+        "https://insta-downloader-omega-ten.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:5173"
+    ]
+}})
 
 # Community-maintained Cobalt API instances (v10 API format: POST /)
 COBALT_INSTANCES = [
