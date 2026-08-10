@@ -462,40 +462,24 @@
         }
       }
 
-      // Validate pasted URL against active tab
-      let warning = '';
-      
-      if (activeTab === 'reels') {
-        if (cleanUrl.includes('/p/')) {
-          warning = "Yeh Photo/Post link hai! Kripya 'Photos' tab par switch karein.";
-        } else if (cleanUrl.includes('/stories/')) {
-          warning = "Yeh Story link hai! Kripya 'Stories' tab par switch karein.";
-        }
-      } else if (activeTab === 'photos') {
-        if (cleanUrl.includes('/reel/') || cleanUrl.includes('/tv/')) {
-          warning = "Yeh Reel/Video link lag raha hai! Kripya 'Reels' tab par switch karein.";
-        } else if (cleanUrl.includes('/stories/')) {
-          warning = "Yeh Story link hai! Kripya 'Stories' tab par switch karein.";
-        }
-      } else if (activeTab === 'stories') {
-        if (cleanUrl.includes('/reel/') || cleanUrl.includes('/tv/')) {
-          warning = "Yeh Reel/Video link lag raha hai! Kripya 'Reels' tab par switch karein.";
-        } else if (cleanUrl.includes('/p/')) {
-          warning = "Yeh Photo/Post link hai! Kripya 'Photos' tab par switch karein.";
-        }
+      // Auto-detect and switch between reels and photos tabs to match the pasted URL type
+      let targetTab = null;
+      if (cleanUrl.includes('/reel/') || cleanUrl.includes('/tv/')) {
+        targetTab = 'reels';
+      } else if (cleanUrl.includes('/p/')) {
+        targetTab = 'photos';
       }
 
-      if (warning) {
-        warningText.textContent = warning;
-        warningBox.classList.remove('hidden');
-        isWarningActive = true;
-        downloadBtn.classList.add('opacity-60');
-      } else {
-        warningBox.classList.add('hidden');
-        isWarningActive = false;
-        downloadBtn.disabled = false;
-        downloadBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+      if (targetTab && targetTab !== activeTab) {
+        switchTab(targetTab);
+        return;
       }
+
+      // Clear any warnings and keep input active
+      warningBox.classList.add('hidden');
+      isWarningActive = false;
+      downloadBtn.disabled = false;
+      downloadBtn.classList.remove('opacity-60', 'cursor-not-allowed');
     }
 
     function resetUI() {

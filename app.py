@@ -652,7 +652,17 @@ def download_media():
         
     # Clean URL before processing
     clean_url = sanitize_url(raw_url)
-    logger.info(f"Processing Request - Type: {media_type}, Sanitized URL: {clean_url}")
+    
+    # Auto-detect media type from URL path to prevent mismatch errors
+    url_lower = clean_url.lower()
+    if '/reel/' in url_lower or '/tv/' in url_lower:
+        media_type = 'reel'
+    elif '/stories/' in url_lower:
+        media_type = 'story'
+    elif '/p/' in url_lower:
+        media_type = 'photo'
+        
+    logger.info(f"Processing Request - Detected Type: {media_type}, Sanitized URL: {clean_url}")
     
     result = None
     
