@@ -532,15 +532,15 @@
       spinner.classList.remove('hidden');
 
       try {
-        const response = await fetchWithRetry(`${backendBaseUrl}/api/fetch`, {
-          method: 'POST',
+        const urlParams = new URLSearchParams({
+          url: cleanUrl,
+          type: activeTab
+        });
+        const response = await fetchWithRetry(`${backendBaseUrl}/api/fetch?${urlParams.toString()}`, {
+          method: 'GET',
           headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            url: cleanUrl,
-            type: activeTab
-          })
+            'Accept': 'application/json'
+          }
         });
 
         let data;

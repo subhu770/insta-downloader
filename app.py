@@ -16,15 +16,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# Enable CORS for production Vercel deployment and local development origins
+# Enable CORS globally for all origins, methods, and headers
 CORS(app, resources={r"/*": {
-    "origins": [
-        "https://insta-downloader-omega-ten.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:5000",
-        "http://127.0.0.1:5000",
-        "http://localhost:5173"
-    ]
+    "origins": "*",
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
 }})
 
 # Community-maintained Cobalt API instances (v10 API format: POST /)
@@ -848,13 +844,19 @@ def scrape_instagram_oembed(url):
         
     return None
 
-@app.route('/api/fetch', methods=['POST', 'GET'])
-@app.route('/api/download', methods=['POST', 'GET'])
-@app.route('/download', methods=['POST', 'GET'])
+@app.route('/api/fetch', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/download', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/download', methods=['GET', 'POST', 'OPTIONS'])
 def download_media():
     """
     Main download route mapping requests to their tab handlers.
     """
+    if request.method == 'OPTIONS':
+        response = jsonify({"status": "ok"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
     # Read JSON or fallback to args/form
     data = request.get_json(silent=True) or {}
     raw_url = data.get('url') or data.get('link') or request.args.get('url') or request.form.get('url')
@@ -1034,21 +1036,30 @@ def download_media():
             "error": "Public media fetch nahi ho saka. Link recheck karein!"
         }), 400
 
-@app.route('/api/proxy_download')
+@app.route('/api/proxy_download', methods=['GET', 'OPTIONS'])
 def proxy_download():
+    if request.method == 'OPTIONS':
+        response = Response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
     media_url = request.args.get('url')
     filename = request.args.get('filename', 'instafetch_media.mp4')
     if not media_url:
         return "URL missing", 400
 
     r = requests.get(media_url, stream=True)
-    return Response(
+    resp = Response(
         r.iter_content(chunk_size=1024*1024),
         headers={
             'Content-Disposition': f'attachment; filename="{filename}"',
-            'Content-Type': r.headers.get('Content-Type', 'video/mp4')
+            'Content-Type': r.headers.get('Content-Type', 'video/mp4'),
+            'Access-Control-Allow-Origin': '*'
         }
     )
+    return resp
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
