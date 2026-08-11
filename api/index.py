@@ -51,7 +51,7 @@ def find_video_url_recursive(obj):
                 return found
     return None
 
-def check_and_update_video_payload(data):
+def check_and_update_video_payload(data, is_reel_request=False):
     if not isinstance(data, dict):
         return data
     
@@ -80,6 +80,16 @@ def check_and_update_video_payload(data):
     if is_video and data.get("type") != "story":
         data["type"] = "video"
         
+    # Strictly enforce for Reels/Videos: if requested as reel/video, we must have a video URL.
+    # Do NOT fallback to a display_url or thumbnail_url (which are images).
+    if is_reel_request:
+        current_url = data.get("url", "") or ""
+        if not (current_url.startswith("http") and (".mp4" in current_url.lower() or "mp4" in current_url.lower() or "/video/" in current_url.lower() or "d.rapidcdn.app" in current_url.lower())):
+            logger.warning(f"Reel request resolved to non-video URL: {current_url}. Invalidating.")
+            data["url"] = None
+            data["status"] = "error"
+            data["error"] = "Could not extract video stream for this Reel."
+            
     return data
 
 def parse_vxinstagram_url(clean_url):
@@ -273,6 +283,16 @@ def wrapped_download_media():
     Guaranteed public API/proxy fallback layer wrapper.
     Executes the original logic and falls back on error or rate-limiting block.
     """
+    # Extract raw URL and type from request parameters
+    req_data = request.get_json(silent=True) or {}
+    raw_url = req_data.get('url') or req_data.get('link') or request.args.get('url') or request.form.get('url')
+    req_type = req_data.get('type') or request.args.get('type') or request.form.get('type') or 'reel'
+    
+    clean_url = sanitize_url(raw_url) if raw_url else ""
+    url_lower = clean_url.lower()
+    
+    is_reel_request = (req_type in ['reel', 'reels']) or ('/reel/' in url_lower or '/tv/' in url_lower)
+    
     if original_download_media:
         try:
             res = original_download_media()
@@ -281,9 +301,9 @@ def wrapped_download_media():
                 if status_code == 200:
                     data = response_data.get_json() if hasattr(response_data, 'get_json') else response_data
                     if data:
-                        updated_data = check_and_update_video_payload(data)
-                        return jsonify(updated_data), 200
-                    return res
+                        updated_data = check_and_update_video_payload(data, is_reel_request)
+                        if updated_data.get("status") == "success" and updated_data.get("url"):
+                            return jsonify(updated_data), 200
             else:
                 return res
         except Exception as e:
@@ -291,34 +311,32 @@ def wrapped_download_media():
             
     logger.info("Instagram rate-limiting detected. Running fallback extraction layer...")
     
-    # Extract raw URL from request parameters
-    data = request.get_json(silent=True) or {}
-    raw_url = data.get('url') or data.get('link') or request.args.get('url') or request.form.get('url')
     if not raw_url:
         return jsonify({"status": "error", "error": "Please enter a valid Instagram URL."}), 400
         
-    clean_url = sanitize_url(raw_url)
-    
     # 1. Fallback: vxinstagram.com Metadata Scraping Proxy (Works for reels, posts, and stories)
     result = parse_vxinstagram_url(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using vxinstagram!")
-        updated_result = check_and_update_video_payload(result)
-        return jsonify(updated_result), 200
+        updated_result = check_and_update_video_payload(result, is_reel_request)
+        if updated_result.get("status") == "success" and updated_result.get("url"):
+            return jsonify(updated_result), 200
             
     # 2. Fallback: Instagram oEmbed API Page Parsing (Only applies to posts/reels)
     result = fetch_oembed_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using oEmbed!")
-        updated_result = check_and_update_video_payload(result)
-        return jsonify(updated_result), 200
+        updated_result = check_and_update_video_payload(result, is_reel_request)
+        if updated_result.get("status") == "success" and updated_result.get("url"):
+            return jsonify(updated_result), 200
         
     # 3. Fallback: api.cobalt.tools (Supports stories, reels, posts)
     result = try_cobalt_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using Cobalt API!")
-        updated_result = check_and_update_video_payload(result)
-        return jsonify(updated_result), 200
+        updated_result = check_and_update_video_payload(result, is_reel_request)
+        if updated_result.get("status") == "success" and updated_result.get("url"):
+            return jsonify(updated_result), 200
         
     # All extraction attempts failed
     logger.error(f"All fallback layers failed to retrieve media for URL: {clean_url}")

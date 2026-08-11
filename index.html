@@ -713,7 +713,7 @@
           let itemThumb = item.thumbnail || item.preview || item.thumb || itemUrl;
           if (!itemUrl) return;
 
-          let isItemVideo = (item && (item.type === 'video' || item.type === 'story')) || (itemUrl && itemUrl.toLowerCase().includes('.mp4'));
+          let isItemVideo = (item && (item.type === 'video' || item.type === 'story')) || activeTab === 'reels' || (itemUrl && (itemUrl.toLowerCase().includes('.mp4') || itemUrl.toLowerCase().includes('mp4')));
           let ext = isItemVideo ? 'mp4' : 'jpg';
           let filename = `instafetch_${idx + 1}.${ext}`;
 
@@ -734,7 +734,7 @@
         // Fallback to single link
         const finalUrl = downloadUrl || (mediaItems[0] ? (typeof mediaItems[0] === 'string' ? mediaItems[0] : (mediaItems[0].url || mediaItems[0].download_url)) : "");
         if (finalUrl) {
-          let isSingleVideo = responseType === 'video' || responseType === 'story' || finalUrl.toLowerCase().includes('.mp4');
+          let isSingleVideo = responseType === 'video' || responseType === 'story' || activeTab === 'reels' || (finalUrl && (finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('mp4')));
           let ext = isSingleVideo ? 'mp4' : 'jpg';
           let filename = `instafetch_media.${ext}`;
           downloadBtn.onclick = function(e) {
