@@ -92,22 +92,36 @@ def check_and_update_video_payload(data, is_reel_request=False):
             
     return data
 
-def parse_vxinstagram_url(clean_url):
-    # Convert instagram.com to vxinstagram.com safely
+import re
+
+def extract_mp4_links_from_text(text):
+    # Regex to find absolute URL patterns
+    urls = re.findall(r'https?://[^\s"\'\\<>]+', text)
+    video_urls = []
+    for url in urls:
+        url_clean = url.replace('&amp;', '&').replace('\\/', '/')
+        # Strip trailing quote/backslash characters often found in JSON strings
+        url_clean = url_clean.rstrip('\\"\'')
+        if ".mp4" in url_clean.lower() or "mp4" in url_clean.lower() or "/video/" in url_clean.lower():
+            video_urls.append(url_clean)
+    return list(set(video_urls))
+
+def parse_proxy_url(clean_url, domain="vxinstagram.com"):
+    # Convert instagram.com to proxy domain safely
     if "www.instagram.com" in clean_url:
-        url = clean_url.replace("www.instagram.com", "vxinstagram.com")
+        url = clean_url.replace("www.instagram.com", domain)
     else:
-        url = clean_url.replace("instagram.com", "vxinstagram.com")
+        url = clean_url.replace("instagram.com", domain)
         
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     try:
-        logger.info(f"Querying vxinstagram fallback URL: {url}")
+        logger.info(f"Querying {domain} fallback URL: {url}")
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            logger.warning(f"vxinstagram returned status {response.status_code} for URL {url}")
+            logger.warning(f"{domain} returned status {response.status_code} for URL {url}")
             return None
             
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -166,8 +180,18 @@ def parse_vxinstagram_url(clean_url):
                     "type": "photo"
                 })
                 
+        # Scan raw response text for any nested/hidden direct video stream (.mp4) links
+        extracted_videos = extract_mp4_links_from_text(response.text)
+        for video_url in extracted_videos:
+            if not any(x["url"] == video_url for x in media_list):
+                media_list.append({
+                    "url": video_url,
+                    "thumbnail": video_url,
+                    "type": "video"
+                })
+                
         if not media_list:
-            logger.warning(f"No media parsed from vxinstagram fallback for {url}")
+            logger.warning(f"No media parsed from {domain} fallback for {url}")
             return None
             
         # Structure the final JSON cleanly for the frontend
@@ -195,7 +219,7 @@ def parse_vxinstagram_url(clean_url):
             }
             
     except Exception as e:
-        logger.error(f"Error parsing vxinstagram fallback: {e}")
+        logger.error(f"Error parsing {domain} fallback: {e}")
         return None
 
 def fetch_oembed_fallback(url):
@@ -263,7 +287,8 @@ def try_cobalt_fallback(url):
         response = requests.post("https://api.cobalt.tools", json=payload, headers=headers, timeout=6)
         if response.status_code == 200:
             data = response.json()
-            if data.get("status") in ["redirect", "stream", "tunnel"]:
+            status = data.get("status")
+            if status in ["redirect", "stream", "tunnel"]:
                 media_url = data.get("url")
                 if media_url:
                     return {
@@ -273,6 +298,28 @@ def try_cobalt_fallback(url):
                         "thumbnail": media_url,
                         "title": "Instagram Media",
                         "type": "video"
+                    }
+            elif status == "picker":
+                picker_items = data.get("picker", [])
+                media_list = []
+                for item in picker_items:
+                    item_url = item.get("url")
+                    item_thumb = item.get("thumb") or item_url
+                    if item_url:
+                        media_list.append({
+                            "url": item_url,
+                            "thumbnail": item_thumb,
+                            "type": item.get("type", "photo")
+                        })
+                if media_list:
+                    return {
+                        "status": "success",
+                        "is_cobalt": True,
+                        "url": media_list[0]["url"],
+                        "thumbnail": media_list[0]["thumbnail"],
+                        "title": "Instagram Media",
+                        "media": media_list,
+                        "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
                     }
     except Exception as e:
         logger.debug(f"Cobalt fallback failed: {e}")
@@ -293,6 +340,9 @@ def wrapped_download_media():
     
     is_reel_request = (req_type in ['reel', 'reels']) or ('/reel/' in url_lower or '/tv/' in url_lower)
     
+    # Store the best available image/photo fallback result
+    best_image_fallback = None
+    
     if original_download_media:
         try:
             res = original_download_media()
@@ -304,6 +354,8 @@ def wrapped_download_media():
                         updated_data = check_and_update_video_payload(data, is_reel_request)
                         if updated_data.get("status") == "success" and updated_data.get("url"):
                             return jsonify(updated_data), 200
+                        elif updated_data.get("url"):
+                            best_image_fallback = updated_data
             else:
                 return res
         except Exception as e:
@@ -314,29 +366,54 @@ def wrapped_download_media():
     if not raw_url:
         return jsonify({"status": "error", "error": "Please enter a valid Instagram URL."}), 400
         
-    # 1. Fallback: vxinstagram.com Metadata Scraping Proxy (Works for reels, posts, and stories)
-    result = parse_vxinstagram_url(clean_url)
+    # 1. Fallback: vxinstagram.com Metadata Scraping Proxy
+    result = parse_proxy_url(clean_url, "vxinstagram.com")
     if result:
         logger.info("Fallback extraction succeeded using vxinstagram!")
         updated_result = check_and_update_video_payload(result, is_reel_request)
         if updated_result.get("status") == "success" and updated_result.get("url"):
             return jsonify(updated_result), 200
+        elif updated_result.get("url") and not best_image_fallback:
+            best_image_fallback = updated_result
             
-    # 2. Fallback: Instagram oEmbed API Page Parsing (Only applies to posts/reels)
+    # 2. Fallback: ddinstagram.com Metadata Scraping Proxy
+    result = parse_proxy_url(clean_url, "ddinstagram.com")
+    if result:
+        logger.info("Fallback extraction succeeded using ddinstagram!")
+        updated_result = check_and_update_video_payload(result, is_reel_request)
+        if updated_result.get("status") == "success" and updated_result.get("url"):
+            return jsonify(updated_result), 200
+        elif updated_result.get("url") and not best_image_fallback:
+            best_image_fallback = updated_result
+            
+    # 3. Fallback: Instagram oEmbed API Page Parsing (Only applies to posts/reels)
     result = fetch_oembed_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using oEmbed!")
         updated_result = check_and_update_video_payload(result, is_reel_request)
         if updated_result.get("status") == "success" and updated_result.get("url"):
             return jsonify(updated_result), 200
+        elif updated_result.get("url") and not best_image_fallback:
+            best_image_fallback = updated_result
         
-    # 3. Fallback: api.cobalt.tools (Supports stories, reels, posts)
+    # 4. Fallback: api.cobalt.tools (Supports stories, reels, posts)
     result = try_cobalt_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using Cobalt API!")
         updated_result = check_and_update_video_payload(result, is_reel_request)
         if updated_result.get("status") == "success" and updated_result.get("url"):
             return jsonify(updated_result), 200
+        elif updated_result.get("url") and not best_image_fallback:
+            best_image_fallback = updated_result
+            
+    # Safe fallback: if we failed to get a direct playable video stream link, but have an image/thumbnail fallback,
+    # return it properly formatted for the frontend player.
+    if best_image_fallback:
+        logger.info("Direct video stream extraction failed. Returning best available image/photo fallback payload.")
+        best_image_fallback["status"] = "success"
+        if "error" in best_image_fallback:
+            del best_image_fallback["error"]
+        return jsonify(best_image_fallback), 200
         
     # All extraction attempts failed
     logger.error(f"All fallback layers failed to retrieve media for URL: {clean_url}")
