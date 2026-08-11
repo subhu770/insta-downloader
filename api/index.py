@@ -16,6 +16,30 @@ logger = logging.getLogger(__name__)
 # Save the original download_media view function to wrap it
 original_download_media = app.view_functions.get('download_media')
 
+def check_and_update_video_payload(data):
+    if not isinstance(data, dict):
+        return data
+    
+    is_video = False
+    
+    # Check at root level
+    main_url = data.get("url", "") or ""
+    if data.get("type") == "video" or data.get("type") == "story" or data.get("is_video") or ".mp4" in main_url.lower() or "mp4" in main_url.lower():
+        is_video = True
+        
+    # Check media list if present
+    if "media" in data and isinstance(data["media"], list):
+        for item in data["media"]:
+            item_url = item.get("url", "") or ""
+            if item.get("type") == "video" or item.get("type") == "story" or ".mp4" in item_url.lower() or "mp4" in item_url.lower():
+                item["type"] = "video"
+                is_video = True
+                
+    if is_video:
+        data["type"] = "video"
+        
+    return data
+
 def parse_vxinstagram_fallback(shortcode):
     url = f"https://vxinstagram.com/p/{shortcode}/"
     headers = {
@@ -49,7 +73,7 @@ def parse_vxinstagram_fallback(shortcode):
             dl_url = dl_btn.get('href')
             
             # Identify video vs photo
-            is_video = card.find('video') is not None
+            is_video = card.find('video') is not None or ".mp4" in dl_url.lower() or "mp4" in dl_url.lower()
             img_tag = card.find('img')
             thumb_url = img_tag.get('src') if img_tag else dl_url
             
@@ -72,10 +96,10 @@ def parse_vxinstagram_fallback(shortcode):
             if og_image and og_image.get('content'):
                 image_url = og_image.get('content')
                 
-            if video_url:
+            if video_url or (image_url and (".mp4" in image_url.lower() or "mp4" in image_url.lower())):
                 media_list.append({
-                    "url": video_url,
-                    "thumbnail": image_url or video_url,
+                    "url": video_url or image_url,
+                    "thumbnail": image_url,
                     "type": "video"
                 })
             elif image_url:
@@ -206,6 +230,10 @@ def wrapped_download_media():
             if isinstance(res, tuple):
                 response_data, status_code = res
                 if status_code == 200:
+                    data = response_data.get_json() if hasattr(response_data, 'get_json') else response_data
+                    if data:
+                        updated_data = check_and_update_video_payload(data)
+                        return jsonify(updated_data), 200
                     return res
             else:
                 return res
@@ -228,19 +256,22 @@ def wrapped_download_media():
         result = parse_vxinstagram_fallback(shortcode)
         if result:
             logger.info("Fallback extraction succeeded using vxinstagram!")
-            return jsonify(result), 200
+            updated_result = check_and_update_video_payload(result)
+            return jsonify(updated_result), 200
             
     # 2. Fallback: Instagram oEmbed API Page Parsing
     result = fetch_oembed_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using oEmbed!")
-        return jsonify(result), 200
+        updated_result = check_and_update_video_payload(result)
+        return jsonify(updated_result), 200
         
     # 3. Fallback: api.cobalt.tools
     result = try_cobalt_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using Cobalt API!")
-        return jsonify(result), 200
+        updated_result = check_and_update_video_payload(result)
+        return jsonify(updated_result), 200
         
     # All extraction attempts failed
     logger.error(f"All fallback layers failed to retrieve media for URL: {clean_url}")

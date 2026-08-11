@@ -243,7 +243,7 @@
             <!-- Media Preview & Details -->
             <div id="result-media-container" class="flex flex-col sm:flex-row gap-4">
               <!-- Thumbnail Container -->
-              <div class="relative w-full sm:w-36 h-48 sm:h-36 rounded-xl overflow-hidden bg-black/40 flex-shrink-0 group">
+              <div id="media-preview-container" class="relative w-full sm:w-36 h-48 sm:h-36 rounded-xl overflow-hidden bg-black/40 flex-shrink-0 group">
                 <img id="result-thumb" src="" alt="Media Thumbnail" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-2">
                   <span id="media-type-badge" class="px-2 py-0.5 bg-black/50 backdrop-blur-md rounded text-[10px] uppercase font-bold text-slate-300 tracking-wider">
@@ -585,19 +585,17 @@
     // Robust parser to render results on success
     function renderResult(response) {
       const resultCard = document.getElementById('result-card');
-      const thumbImg = document.getElementById('result-thumb');
       const titleEl = document.getElementById('result-title');
       const downloadBtn = document.getElementById('result-download-btn');
-      const badgeEl = document.getElementById('media-type-badge');
       const carouselBox = document.getElementById('carousel-media-box');
       const carouselItems = document.getElementById('carousel-items');
       const singleDlBox = document.getElementById('single-download-box');
+      const previewContainer = document.getElementById('media-preview-container');
 
       // Reset display states
       carouselBox.classList.add('hidden');
       carouselItems.innerHTML = '';
       singleDlBox.classList.remove('hidden');
-      badgeEl.textContent = activeTab.slice(0, -1); // Singular badge e.g. "REEL", "PHOTO", "STORIE"
 
       // Extrapolate title/caption
       let caption = "Instagram Content";
@@ -665,13 +663,47 @@
         thumbnail = downloadUrl || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop';
       }
 
-      // Set values to UI elements
-      thumbImg.onerror = function() {
-        // Fallback to premium placeholder if Instagram CDN blocks hotlinking (403)
-        this.src = 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop';
-        this.onerror = null; // Prevent infinite loop
-      };
-      thumbImg.src = thumbnail || downloadUrl;
+      // Determine actual response media type (ignoring tab constraints)
+      const responseType = response.type || (activeTab === 'reels' ? 'video' : 'photo');
+      const isVideo = responseType === 'video' || responseType === 'story' || (downloadUrl && downloadUrl.toLowerCase().includes('.mp4'));
+
+      // Render media preview container dynamically
+      previewContainer.innerHTML = '';
+
+      if (isVideo && mediaItems.length <= 1 && downloadUrl) {
+        // Create HTML5 Video Preview
+        const videoEl = document.createElement('video');
+        videoEl.src = downloadUrl;
+        videoEl.poster = thumbnail;
+        videoEl.controls = true;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        videoEl.className = "w-full h-full object-cover rounded-xl";
+        previewContainer.appendChild(videoEl);
+      } else {
+        // Create Image Preview
+        const imgEl = document.createElement('img');
+        imgEl.id = "result-thumb";
+        imgEl.src = thumbnail || downloadUrl;
+        imgEl.alt = "Media Preview";
+        imgEl.className = "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 rounded-xl";
+        imgEl.onerror = function() {
+          this.src = 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop';
+          this.onerror = null;
+        };
+        previewContainer.appendChild(imgEl);
+      }
+
+      // Append type badge back dynamically
+      const badgeDiv = document.createElement('div');
+      badgeDiv.className = "absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-2 pointer-events-none";
+      const badgeText = responseType === 'video' ? 'VIDEO/REEL' : (responseType === 'story' ? 'STORY' : 'PHOTO');
+      badgeDiv.innerHTML = `
+        <span id="media-type-badge" class="px-2 py-0.5 bg-black/50 backdrop-blur-md rounded text-[10px] uppercase font-bold text-slate-300 tracking-wider">
+          ${badgeText}
+        </span>
+      `;
+      previewContainer.appendChild(badgeDiv);
 
       // Handle Multiple Items Case
       if (mediaItems.length > 1) {
@@ -683,8 +715,8 @@
           let itemThumb = item.thumbnail || item.preview || item.thumb || itemUrl;
           if (!itemUrl) return;
 
-          let isVideo = (item && item.type === 'video') || activeTab === 'reels';
-          let ext = isVideo ? 'mp4' : 'jpg';
+          let isItemVideo = (item && (item.type === 'video' || item.type === 'story')) || (itemUrl && itemUrl.toLowerCase().includes('.mp4'));
+          let ext = isItemVideo ? 'mp4' : 'jpg';
           let filename = `instafetch_${idx + 1}.${ext}`;
 
           const slide = document.createElement('div');
@@ -704,8 +736,8 @@
         // Fallback to single link
         const finalUrl = downloadUrl || (mediaItems[0] ? (typeof mediaItems[0] === 'string' ? mediaItems[0] : (mediaItems[0].url || mediaItems[0].download_url)) : "");
         if (finalUrl) {
-          let isVideo = response.type === 'video' || response.type === 'story' || activeTab === 'reels';
-          let ext = isVideo ? 'mp4' : 'jpg';
+          let isSingleVideo = responseType === 'video' || responseType === 'story' || finalUrl.toLowerCase().includes('.mp4');
+          let ext = isSingleVideo ? 'mp4' : 'jpg';
           let filename = `instafetch_media.${ext}`;
           downloadBtn.onclick = function(e) {
             e.preventDefault();
