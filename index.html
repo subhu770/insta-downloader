@@ -659,8 +659,11 @@
       }
 
       // Determine actual response media type (ignoring tab constraints)
-      const responseType = response.type || (activeTab === 'reels' ? 'video' : 'photo');
-      const isVideo = responseType === 'video' || responseType === 'story' || (downloadUrl && downloadUrl.toLowerCase().includes('.mp4'));
+      let responseType = response.type || (activeTab === 'reels' ? 'video' : 'photo');
+      if (downloadUrl && (downloadUrl.toLowerCase().includes('.mp4') || downloadUrl.toLowerCase().includes('mp4')) && responseType !== 'story') {
+        responseType = 'video';
+      }
+      const isVideo = responseType === 'video' || responseType === 'story' || (downloadUrl && (downloadUrl.toLowerCase().includes('.mp4') || downloadUrl.toLowerCase().includes('mp4')));
 
       // Render media preview container dynamically
       previewContainer.innerHTML = '';
@@ -692,7 +695,7 @@
       // Append type badge back dynamically
       const badgeDiv = document.createElement('div');
       badgeDiv.className = "absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end justify-center p-2 pointer-events-none";
-      const badgeText = responseType === 'video' ? 'VIDEO/REEL' : (responseType === 'story' ? 'STORY' : 'PHOTO');
+      const badgeText = responseType === 'video' ? 'VIDEO' : (responseType === 'story' ? 'STORY' : 'PHOTO');
       badgeDiv.innerHTML = `
         <span id="media-type-badge" class="px-2 py-0.5 bg-black/50 backdrop-blur-md rounded text-[10px] uppercase font-bold text-slate-300 tracking-wider">
           ${badgeText}

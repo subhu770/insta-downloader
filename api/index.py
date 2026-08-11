@@ -16,25 +16,67 @@ logger = logging.getLogger(__name__)
 # Save the original download_media view function to wrap it
 original_download_media = app.view_functions.get('download_media')
 
+def find_video_url_recursive(obj):
+    if isinstance(obj, str):
+        # Match direct video stream links (containing mp4 or video indicators)
+        if obj.startswith("http") and (".mp4" in obj.lower() or "mp4" in obj.lower() or "/video/" in obj.lower()):
+            return obj
+        return None
+    elif isinstance(obj, dict):
+        # Prioritize key names commonly containing direct video URLs
+        video_keys = ["video_url", "video_versions", "download_url", "downloadLink", "high_quality_url", "url", "link"]
+        for key in video_keys:
+            val = obj.get(key)
+            if val:
+                # Resolve list arrays like video_versions
+                if key == "video_versions" and isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, dict):
+                            url_val = item.get("url")
+                            if url_val and isinstance(url_val, str) and url_val.startswith("http"):
+                                return url_val
+                found = find_video_url_recursive(val)
+                if found:
+                    return found
+        # Recursively search other keys
+        for k, v in obj.items():
+            if k not in video_keys:
+                found = find_video_url_recursive(v)
+                if found:
+                    return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = find_video_url_recursive(item)
+            if found:
+                return found
+    return None
+
 def check_and_update_video_payload(data):
     if not isinstance(data, dict):
         return data
     
     is_video = False
     
-    # Check at root level
-    main_url = data.get("url", "") or ""
-    if data.get("type") == "video" or data.get("is_video") or ".mp4" in main_url.lower() or "mp4" in main_url.lower():
-        is_video = True
-        
-    # Check media list if present
+    # 1. Update media list items first if present
     if "media" in data and isinstance(data["media"], list):
         for item in data["media"]:
-            item_url = item.get("url", "") or ""
-            if item.get("type") == "video" or ".mp4" in item_url.lower() or "mp4" in item_url.lower():
+            item_video = find_video_url_recursive(item)
+            if item_video:
+                item["url"] = item_video
                 item["type"] = "video"
                 is_video = True
                 
+    # 2. Check root level
+    root_video = find_video_url_recursive(data)
+    if root_video:
+        data["url"] = root_video
+        is_video = True
+    else:
+        # Fallback check on string representations or type flags
+        main_url = data.get("url", "") or ""
+        if data.get("type") == "video" or data.get("is_video") or ".mp4" in main_url.lower() or "mp4" in main_url.lower():
+            is_video = True
+            
     if is_video and data.get("type") != "story":
         data["type"] = "video"
         
