@@ -321,8 +321,8 @@
         loadingMessage: 'Loading Photos... Hang tight!'
       },
       stories: {
-        placeholder: 'Paste Instagram Story URL here (e.g., https://instagram.com/stories/...)',
-        guidance: 'Download active user stories. Requires valid story link.',
+        placeholder: 'https://www.instagram.com/stories/username/123456...',
+        guidance: 'Public account stories only. Download active user stories.',
         icon: 'history',
         loadingMessage: 'Retrieving Story... Almost there!'
       }
@@ -414,27 +414,22 @@
         tabIndicator.style.transform = 'translateX(200%)';
       }
 
-      // Toggle maintenance notice banner for Stories tab
-      if (tabId === 'stories') {
-        inputControlsGroup.classList.add('hidden');
-        maintenanceBanner.classList.remove('hidden');
-      } else {
-        inputControlsGroup.classList.remove('hidden');
-        maintenanceBanner.classList.add('hidden');
-        
-        // Update placeholders and labels
-        urlInput.placeholder = tabsConfig[tabId].placeholder;
-        guidanceText.textContent = tabsConfig[tabId].guidance;
-        
-        // Update input icon
-        inputIcon.setAttribute('data-lucide', tabsConfig[tabId].icon);
-        if (window.lucide && typeof lucide.createIcons === 'function') {
-          lucide.createIcons();
-        }
-        
-        // Trigger sanitization & validation on existing value
-        sanitizeAndValidate(urlInput.value);
+      // Stories is now active! No more maintenance banner.
+      inputControlsGroup.classList.remove('hidden');
+      maintenanceBanner.classList.add('hidden');
+      
+      // Update placeholders and labels
+      urlInput.placeholder = tabsConfig[tabId].placeholder;
+      guidanceText.textContent = tabsConfig[tabId].guidance;
+      
+      // Update input icon
+      inputIcon.setAttribute('data-lucide', tabsConfig[tabId].icon);
+      if (window.lucide && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
       }
+      
+      // Trigger sanitization & validation on existing value
+      sanitizeAndValidate(urlInput.value);
 
       // Clear previous results or errors
       resetUI();

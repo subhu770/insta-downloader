@@ -24,39 +24,44 @@ def check_and_update_video_payload(data):
     
     # Check at root level
     main_url = data.get("url", "") or ""
-    if data.get("type") == "video" or data.get("type") == "story" or data.get("is_video") or ".mp4" in main_url.lower() or "mp4" in main_url.lower():
+    if data.get("type") == "video" or data.get("is_video") or ".mp4" in main_url.lower() or "mp4" in main_url.lower():
         is_video = True
         
     # Check media list if present
     if "media" in data and isinstance(data["media"], list):
         for item in data["media"]:
             item_url = item.get("url", "") or ""
-            if item.get("type") == "video" or item.get("type") == "story" or ".mp4" in item_url.lower() or "mp4" in item_url.lower():
+            if item.get("type") == "video" or ".mp4" in item_url.lower() or "mp4" in item_url.lower():
                 item["type"] = "video"
                 is_video = True
                 
-    if is_video:
+    if is_video and data.get("type") != "story":
         data["type"] = "video"
         
     return data
 
-def parse_vxinstagram_fallback(shortcode):
-    url = f"https://vxinstagram.com/p/{shortcode}/"
+def parse_vxinstagram_url(clean_url):
+    # Convert instagram.com to vxinstagram.com safely
+    if "www.instagram.com" in clean_url:
+        url = clean_url.replace("www.instagram.com", "vxinstagram.com")
+    else:
+        url = clean_url.replace("instagram.com", "vxinstagram.com")
+        
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     try:
-        logger.info(f"Querying vxinstagram fallback for shortcode: {shortcode}")
+        logger.info(f"Querying vxinstagram fallback URL: {url}")
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            logger.warning(f"vxinstagram returned status {response.status_code} for shortcode {shortcode}")
+            logger.warning(f"vxinstagram returned status {response.status_code} for URL {url}")
             return None
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Extract title from og:description or page title
-        title = "Instagram Media"
+        title = "Instagram Story" if "/stories/" in clean_url.lower() else "Instagram Media"
         og_desc = soup.find('meta', property='og:description') or soup.find('meta', attrs={'name': 'og:description'})
         if og_desc and og_desc.get('content'):
             title = og_desc.get('content').strip()
@@ -110,10 +115,12 @@ def parse_vxinstagram_fallback(shortcode):
                 })
                 
         if not media_list:
-            logger.warning(f"No media parsed from vxinstagram fallback for {shortcode}")
+            logger.warning(f"No media parsed from vxinstagram fallback for {url}")
             return None
             
         # Structure the final JSON cleanly for the frontend
+        response_type = "story" if "/stories/" in clean_url.lower() else ("photo" if all(x["type"] == "photo" for x in media_list) else "video")
+        
         if len(media_list) > 1:
             return {
                 "status": "success",
@@ -122,7 +129,7 @@ def parse_vxinstagram_fallback(shortcode):
                 "thumbnail": media_list[0]["thumbnail"],
                 "title": title,
                 "media": media_list,
-                "type": "photo" if all(x["type"] == "photo" for x in media_list) else "video"
+                "type": response_type
             }
         else:
             first = media_list[0]
@@ -132,7 +139,7 @@ def parse_vxinstagram_fallback(shortcode):
                 "url": first["url"],
                 "thumbnail": first["thumbnail"],
                 "title": title,
-                "type": first["type"]
+                "type": "story" if response_type == "story" else first["type"]
             }
             
     except Exception as e:
@@ -249,24 +256,22 @@ def wrapped_download_media():
         return jsonify({"status": "error", "error": "Please enter a valid Instagram URL."}), 400
         
     clean_url = sanitize_url(raw_url)
-    shortcode = extract_shortcode(clean_url)
     
-    # 1. Fallback: vxinstagram.com Metadata Scraping Proxy
-    if shortcode:
-        result = parse_vxinstagram_fallback(shortcode)
-        if result:
-            logger.info("Fallback extraction succeeded using vxinstagram!")
-            updated_result = check_and_update_video_payload(result)
-            return jsonify(updated_result), 200
+    # 1. Fallback: vxinstagram.com Metadata Scraping Proxy (Works for reels, posts, and stories)
+    result = parse_vxinstagram_url(clean_url)
+    if result:
+        logger.info("Fallback extraction succeeded using vxinstagram!")
+        updated_result = check_and_update_video_payload(result)
+        return jsonify(updated_result), 200
             
-    # 2. Fallback: Instagram oEmbed API Page Parsing
+    # 2. Fallback: Instagram oEmbed API Page Parsing (Only applies to posts/reels)
     result = fetch_oembed_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using oEmbed!")
         updated_result = check_and_update_video_payload(result)
         return jsonify(updated_result), 200
         
-    # 3. Fallback: api.cobalt.tools
+    # 3. Fallback: api.cobalt.tools (Supports stories, reels, posts)
     result = try_cobalt_fallback(clean_url)
     if result:
         logger.info("Fallback extraction succeeded using Cobalt API!")
